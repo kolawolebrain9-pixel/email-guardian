@@ -1,0 +1,14 @@
+{
+  "name": "vouch",
+  "version": "1.0.0",
+  "description": "Vouch — Inbox Email Safety Tool",
+  "private": true,
+  "scripts": {
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build:client": "npm --prefix client run build",
+    "start:server": "npm --prefix server start",
+    "test:server": "npm --prefix server test"
+  }
+}
+

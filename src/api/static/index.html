@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Guardian - Threat Scanner</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            max-width: 900px; 
+            margin: 30px auto; 
+            padding: 20px; 
+            background: #f8f9fa;
+            color: #212529;
+        }
+        h1 { color: #1a1a1a; display: flex; align-items: center; gap: 10px; }
+        .card { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.06); 
+            margin-bottom: 20px; 
+            border: 1px solid #e9ecef;
+        }
+        .login-box { background: white; }
+        .logged-in { background: #e8f5e9; border: 1px solid #c8e6c9; display: none; }
+        .upload-box { 
+            border: 2px dashed #007bff; 
+            padding: 30px; 
+            text-align: center; 
+            border-radius: 8px; 
+            background: #fdfdfe;
+            cursor: pointer;
+        }
+        .result { margin-top: 20px; padding: 20px; border-radius: 8px; display: none; }
+        .SAFE { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .MEDIUM { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .HIGH { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        
+        button { 
+            background: #007bff; 
+            color: white; 
+            padding: 9px 20px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.15s ease-in-out;
+        }
+        button:hover { background: #0056b3; }
+        button.btn-secondary { background: #6c757d; }
+        button.btn-secondary:hover { background: #5a6268; }
+        
+        input[type="text"], input[type="password"] { 
+            padding: 9px 12px; 
+            margin: 5px; 
+            border: 1px solid #ced4da; 
+            border-radius: 5px; 
+            width: 220px; 
+        }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6; }
+        th { background: #343a40; color: white; }
+        
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-box { padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #dee2e6; background: white; }
+        .stat-number { font-size: 26px; font-weight: bold; margin-top: 5px; }
+
+        .badge { 
+            display: inline-block; 
+            padding: 3px 8px; 
+            border-radius: 4px; 
+            font-weight: bold; 
+            font-size: 12px; 
+        }
+        .badge-safe { background: #28a745; color: white; }
+        .badge-medium { background: #ffc107; color: #212529; }
+        .badge-high { background: #dc3545; color: white; }
+
+        .reasons-list { margin: 10px 0; padding-left: 20px; }
+        .reasons-list li { margin-bottom: 4px; }
+        .loading { display: none; margin-top: 15px; color: #007bff; font-weight: bold; }
+    </style>
+</head>
+<body onload="initApp()">
+
+    <h1>🛡️ Email Guardian</h1>
+    <p style="color: #6c757d; margin-top: -10px; margin-bottom: 25px;">
+        Inspect emails (.eml files) for phishing lures, domain spoofing, and malicious links.
+    </p>
+
+    <!-- Authentication Area -->
+    <div id="loginBox" class="card login-box">
+        <h3 style="margin-top:0;">Account Login / Registration</h3>
+        <input type="text" id="username" placeholder="Username" autocomplete="username">
+        <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+        <br>
+        <button onclick="login()">Log In</button>
+        <button onclick="register()" class="btn-secondary">Register</button>
+        <span id="loginMsg" style="margin-left: 10px; font-size: 14px;"></span>
+    </div>
+
+    <!-- Logged-in State -->
+    <div id="loggedInBox" class="card logged-in">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Logged in as: <strong id="currentUser">user</strong></span>
+            <button onclick="logout()" class="btn-secondary" style="padding: 5px 12px;">Log Out</button>
+        </div>
+    </div>
+
+    <!-- Statistics Overview -->
+    <div class="stats">
+        <div class="stat-box">
+            <div style="color: #6c757d; font-size: 13px;">TOTAL SCANS</div>
+            <div class="stat-number" id="totalScans">0</div>
+        </div>
+        <div class="stat-box" style="border-left: 4px solid #dc3545;">
+            <div style="color: #dc3545; font-size: 13px;">HIGH RISK</div>
+            <div class="stat-number" style="color: #dc3545;" id="highRisk">0</div>
+        </div>
+        <div class="stat-box" style="border-left: 4px solid #ffc107;">
+            <div style="color: #856404; font-size: 13px;">MEDIUM RISK</div>
+            <div class="stat-number" style="color: #856404;" id="mediumRisk">0</div>
+        </div>
+        <div class="stat-box" style="border-left: 4px solid #28a745;">
+            <div style="color: #28a745; font-size: 13px;">SAFE</div>
+            <div class="stat-number" style="color: #28a745;" id="safeCount">0</div>
+        </div>
+    </div>
+
+    <!-- Upload & Scan Section -->
+    <div class="card">
+        <h3 style="margin-top:0;">Upload & Analyze Email</h3>
+        <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+            <input type="file" id="fileInput" accept=".eml,.msg,.txt" style="display:none" onchange="fileSelected()">
+            <div id="uploadLabel">📁 Click here to select an <strong>.eml</strong> or email file</div>
+        </div>
+        <div style="margin-top: 15px; display: flex; align-items: center; gap: 15px;">
+            <button onclick="scanEmail()">Scan Email</button>
+            <span id="loadingIndicator" class="loading">🔍 Analyzing email headers, links, and content...</span>
+        </div>
+    </div>
+    
+    <!-- Scan Result Box -->
+    <div id="result" class="result">
+        <h3 style="margin-top:0;" id="resultHeader">Scan Result</h3>
+        <p><strong>Scan ID:</strong> <code id="scanId"></code></p>
+        <p><strong>Sender:</strong> <span id="sender"></span></p>
+        <p><strong>Subject:</strong> <span id="subject"></span></p>
+        <p><strong>Risk Score:</strong> <span id="riskScore"></span> / 100 (<span id="riskLevelBadge"></span>)</p>
+        
+        <p><strong>Threat Analysis Findings:</strong></p>
+        <ul id="reasonsList" class="reasons-list"></ul>
+
+        <p><strong>Extracted Links (<span id="linksCount">0</span>):</strong></p>
+        <ul id="linkList"></ul>
+    </div>
+
+    <!-- Scan History Table -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0;">📋 Scan History</h3>
+            <button onclick="loadHistory()" class="btn-secondary" style="padding: 5px 12px;">Refresh History</button>
+        </div>
+        <div id="historyContainer" style="margin-top: 15px;"></div>
+    </div>
+
+    <script>
+        let currentUsername = localStorage.getItem('email_guardian_user') || '';
+
+        // Security Helper: Escape strings to prevent XSS
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Security Helper: Ensure safe URLs (prevent javascript: etc)
+        function sanitizeUrl(url) {
+            if (!url) return '#';
+            const clean = String(url).trim();
+            if (clean.startsWith('http://') || clean.startsWith('https://')) {
+                return clean;
+            }
+            return '#';
+        }
+
+        function initApp() {
+            updateAuthView();
+            loadStats();
+            loadHistory();
+        }
+
+        function updateAuthView() {
+            if (currentUsername) {
+                document.getElementById('loginBox').style.display = 'none';
+                document.getElementById('loggedInBox').style.display = 'block';
+                document.getElementById('currentUser').textContent = currentUsername;
+            } else {
+                document.getElementById('loginBox').style.display = 'block';
+                document.getElementById('loggedInBox').style.display = 'none';
+            }
+        }
+
+        function fileSelected() {
+            const fileInput = document.getElementById('fileInput');
+            const uploadLabel = document.getElementById('uploadLabel');
+            if (fileInput.files.length > 0) {
+                uploadLabel.textContent = `Selected: ${fileInput.files[0].name} (${(fileInput.files[0].size / 1024).toFixed(1)} KB)`;
+            }
+        }
+
+        async function register() {
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const msg = document.getElementById('loginMsg');
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!username || !password) {
+                msg.style.color = 'red';
+                msg.textContent = 'Please fill in both fields.';
+                return;
+            }
+
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    msg.style.color = 'green';
+                    msg.textContent = 'Registered successfully! You can now log in.';
+                } else {
+                    msg.style.color = 'red';
+                    msg.textContent = data.detail || data.error || 'Registration failed.';
+                }
+            } catch (err) {
+                msg.style.color = 'red';
+                msg.textContent = 'Network error during registration.';
+            }
+        }
+
+        async function login() {
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const msg = document.getElementById('loginMsg');
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!username || !password) {
+                msg.style.color = 'red';
+                msg.textContent = 'Please fill in both fields.';
+                return;
+            }
+
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    currentUsername = username;
+                    localStorage.setItem('email_guardian_user', username);
+                    msg.textContent = '';
+                    usernameInput.value = '';
+                    passwordInput.value = '';
+                    updateAuthView();
+                    loadStats();
+                    loadHistory();
+                } else {
+                    msg.style.color = 'red';
+                    msg.textContent = data.detail || 'Invalid username or password.';
+                }
+            } catch (err) {
+                msg.style.color = 'red';
+                msg.textContent = 'Network error during login.';
+            }
+        }
+
+        function logout() {
+            currentUsername = '';
+            localStorage.removeItem('email_guardian_user');
+            updateAuthView();
+            loadStats();
+            loadHistory();
+        }
+
+        async function scanEmail() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select an email file to scan.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const userParam = encodeURIComponent(currentUsername || 'anonymous');
+            const url = `/scan?username=${userParam}`;
+            
+            const loading = document.getElementById('loadingIndicator');
+            loading.style.display = 'inline';
+
+            try {
+                const response = await fetch(url, { method: 'POST', body: formData });
+                const data = await response.json();
+                loading.style.display = 'none';
+
+                if (!response.ok) {
+                    alert('Scan failed: ' + (data.detail || 'Unknown server error'));
+                    return;
+                }
+
+                // Render result safely
+                document.getElementById('scanId').textContent = data.scan_id;
+                document.getElementById('sender').textContent = data.sender || '(None)';
+                document.getElementById('subject').textContent = data.subject || '(No Subject)';
+                document.getElementById('riskScore').textContent = data.risk_score;
+                document.getElementById('linksCount').textContent = data.link_count;
+                
+                const badge = document.getElementById('riskLevelBadge');
+                badge.textContent = data.risk_level;
+                badge.className = 'badge ' + (data.risk_level === 'HIGH' ? 'badge-high' : data.risk_level === 'MEDIUM' ? 'badge-medium' : 'badge-safe');
+
+                // Render reasons list safely
+                const reasonsList = document.getElementById('reasonsList');
+                reasonsList.innerHTML = '';
+                (data.reasons || []).forEach(reason => {
+                    const li = document.createElement('li');
+                    li.textContent = reason;
+                    reasonsList.appendChild(li);
+                });
+
+                // Render links safely
+                const linkList = document.getElementById('linkList');
+                linkList.innerHTML = '';
+                if (data.links && data.links.length > 0) {
+                    data.links.forEach(link => {
+                        const li = document.createElement('li');
+                        const a = document.createElement('a');
+                        a.href = sanitizeUrl(link);
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                        a.textContent = link;
+                        li.appendChild(a);
+                        linkList.appendChild(li);
+                    });
+                } else {
+                    const li = document.createElement('li');
+                    li.textContent = 'No external hyperlinks found.';
+                    linkList.appendChild(li);
+                }
+
+                const resultDiv = document.getElementById('result');
+                resultDiv.className = 'result ' + data.risk_level;
+                resultDiv.style.display = 'block';
+
+                loadStats();
+                loadHistory();
+            } catch (err) {
+                loading.style.display = 'none';
+                alert('Error during scan: ' + err.message);
+            }
+        }
+
+        async function loadHistory() {
+            const container = document.getElementById('historyContainer');
+            try {
+                const userParam = currentUsername ? `?username=${encodeURIComponent(currentUsername)}` : '';
+                const response = await fetch(`/history${userParam}`);
+                const scans = await response.json();
+
+                if (!scans || scans.length === 0) {
+                    container.innerHTML = '<p style="color:#6c757d;">No scans recorded yet.</p>';
+                    return;
+                }
+
+                let html = `<table>
+                    <thead>
+                        <tr>
+                            <th>Subject</th>
+                            <th>Sender</th>
+                            <th>Links</th>
+                            <th>Score</th>
+                            <th>Risk</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+                scans.forEach(scan => {
+                    const badgeClass = scan.risk_level === 'HIGH' ? 'badge-high' : scan.risk_level === 'MEDIUM' ? 'badge-medium' : 'badge-safe';
+                    const timeStr = scan.created_at ? new Date(scan.created_at).toLocaleString() : '';
+                    
+                    html += `<tr>
+                        <td><strong>${escapeHtml(scan.subject)}</strong></td>
+                        <td>${escapeHtml(scan.sender)}</td>
+                        <td>${escapeHtml(scan.link_count)}</td>
+                        <td>${escapeHtml(scan.risk_score)}</td>
+                        <td><span class="badge ${badgeClass}">${escapeHtml(scan.risk_level)}</span></td>
+                        <td style="color:#6c757d; font-size:12px;">${escapeHtml(timeStr)}</td>
+                    </tr>`;
+                });
+
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            } catch (err) {
+                container.innerHTML = `<p style="color:red;">Error loading scan history: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const userParam = currentUsername ? `?username=${encodeURIComponent(currentUsername)}` : '';
+                const response = await fetch(`/stats${userParam}`);
+                const data = await response.json();
+                
+                document.getElementById('totalScans').textContent = data.total_scans;
+                document.getElementById('highRisk').textContent = data.high_risk;
+                document.getElementById('mediumRisk').textContent = data.medium_risk;
+                document.getElementById('safeCount').textContent = data.safe;
+            } catch (err) {
+                console.error('Error fetching stats:', err);
+            }
+        }
+    </script>
+</body>
+</html>
+</html>

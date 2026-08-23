@@ -1,0 +1,58 @@
+import React from 'react';
+
+export default function ExplanationCard({ explanation, reasons = [] }) {
+  // Helper to render markdown-like backticks `code` into <code> tags
+  const renderReasonText = (text) => {
+    if (!text) return null;
+    const parts = text.split(/(`[^`]+`)/g);
+    return parts.map((part, index) => {
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return (
+          <code
+            key={index}
+            className="font-mono text-[12px] bg-paper-raised border border-line px-[6px] py-[1px] rounded-[5px] text-ink"
+          >
+            {part.slice(1, -1)}
+          </code>
+        );
+      }
+      return <span key={index}>{part}</span>;
+    });
+  };
+
+  return (
+    <div className="flex gap-[11px] items-start">
+      {/* Teal Shield Avatar */}
+      <div className="w-[32px] h-[32px] rounded-full bg-gradient-to-br from-teal to-teal-deep flex-shrink-0 flex items-center justify-center shadow-avatar">
+        <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2 4 5v6c0 5.2 3.4 9.6 8 11 4.6-1.4 8-5.8 8-11V5l-8-3Z" fill="#fff" />
+        </svg>
+      </div>
+
+      {/* Conversational Speech Bubble */}
+      <div className="bg-paper border border-line rounded-tl-[4px] rounded-tr-[16px] rounded-br-[16px] rounded-bl-[16px] p-[13px_15px] text-[14px] leading-[1.6] text-ink flex-1 min-w-0">
+        {explanation && (
+          <div
+            className="speech-text [&_b]:text-teal-deep [&_b]:font-semibold"
+            dangerouslySetInnerHTML={{ __html: explanation }}
+          />
+        )}
+
+        {reasons && reasons.length > 0 && (
+          <ul className="m-0 mt-[11px] p-0 list-none flex flex-col gap-[7px]">
+            {reasons.map((reason, idx) => (
+              <li
+                key={idx}
+                className="text-[13px] text-ink-soft flex gap-[8px] items-start leading-[1.5]"
+              >
+                <span className="w-[4px] h-[4px] rounded-full bg-ink-faint mt-[7px] flex-shrink-0" />
+                <span className="flex-1">{renderReasonText(reason)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
