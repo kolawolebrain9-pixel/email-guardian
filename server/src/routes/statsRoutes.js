@@ -8,7 +8,7 @@ router.get('/', async (req, res) => {
     const count = await getGlobalVouchedCount();
     res.json({ vouchedToday: count });
   } catch (err) {
-    res.json({ vouchedToday: 1204 });
+    res.json({ vouchedToday: 1 });
   }
 });
 

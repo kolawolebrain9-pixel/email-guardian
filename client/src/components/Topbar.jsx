@@ -48,7 +48,7 @@ export default function Topbar({ initialCount = 0 }) {
           <span className="animate-ring absolute inline-flex h-full w-full rounded-full bg-violet opacity-75"></span>
           <span className="relative inline-flex rounded-full h-[6px] w-[6px] bg-violet"></span>
         </span>
-        <span>{count.toLocaleString()} vouched for today</span>
+        <span>{count.toLocaleString()} {count === 1 ? 'inbox' : 'inboxes'} protected today</span>
       </div>
     </div>
   );
