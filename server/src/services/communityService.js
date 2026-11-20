@@ -121,9 +121,11 @@ export async function getCommunityThreatStatus(senderDomain, subject) {
 
 export async function getGlobalVouchedCount() {
   try {
-    // Count real users who have connected and vouched their inbox
+    const today = new Date().toISOString().slice(0, 10);
+    // Count distinct inboxes that were actually scanned and verified today
     const res = await getRow(
-      `SELECT COUNT(*) as count FROM users WHERE email NOT LIKE '%@example.com'`
+      `SELECT COUNT(DISTINCT user_email) as count FROM scans WHERE user_email NOT LIKE ? AND scanned_at >= ?`,
+      ['%@example.com', today]
     );
     const count = res ? Number(res.count) : 0;
     return count > 0 ? count : 1;
