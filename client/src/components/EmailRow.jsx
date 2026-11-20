@@ -8,10 +8,15 @@ export default function EmailRow({
   onToggle,
   onAction
 }) {
-  const isExpandable = email.riskLevel === 'caution' || email.riskLevel === 'risk';
-  const isSafe = email.riskLevel === 'safe';
-  const isCaution = email.riskLevel === 'caution';
-  const isRisk = email.riskLevel === 'risk';
+  const isVouchedSafe = email.actionTaken === 'safe' || email.actionTaken === 'vouch';
+  const isFlagged = email.actionTaken === 'flag' || email.actionTaken === 'block';
+
+  // If vouched safe by user, visually override to safe
+  const effectiveRisk = isVouchedSafe ? 'safe' : email.riskLevel;
+  const isExpandable = !isVouchedSafe && (effectiveRisk === 'caution' || effectiveRisk === 'risk');
+  const isSafe = effectiveRisk === 'safe';
+  const isCaution = !isVouchedSafe && !isFlagged && effectiveRisk === 'caution';
+  const isRisk = isFlagged || (!isVouchedSafe && effectiveRisk === 'risk');
 
   const handleClick = (e) => {
     // Prevent toggle if clicking inside buttons or links
@@ -64,8 +69,27 @@ export default function EmailRow({
           {email.subject}
         </div>
 
-        {/* Caution / Risk Tag */}
-        {isCaution && (
+        {/* Vouched Safe / Flagged / Caution / Risk Tag */}
+        {isVouchedSafe && (
+          <div className="inline-flex items-center gap-[5px] text-[11px] font-semibold mt-[9px] py-[4px] px-[10px] rounded-full bg-safe-bg text-safe">
+            <svg className="w-[12px] h-[12px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Vouched as safe by you
+          </div>
+        )}
+
+        {isFlagged && (
+          <div className="inline-flex items-center gap-[5px] text-[11px] font-semibold mt-[9px] py-[4px] px-[10px] rounded-full bg-coral-bg text-coral-text">
+            <svg className="w-[11px] h-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+              <line x1="4" y1="22" x2="4" y2="15" />
+            </svg>
+            Flagged as scam by you
+          </div>
+        )}
+
+        {!isVouchedSafe && !isFlagged && isCaution && (
           <div className="inline-flex items-center gap-[5px] text-[11px] font-semibold mt-[9px] py-[4px] px-[10px] rounded-full bg-gold-bg text-gold-text">
             <svg className="w-[11px] h-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
               <path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a1.8 1.8 0 0 0 1.6 2.7h16a1.8 1.8 0 0 0 1.6-2.7L13.7 3.9a1.8 1.8 0 0 0-3.4 0Z" />
@@ -74,7 +98,7 @@ export default function EmailRow({
           </div>
         )}
 
-        {isRisk && (
+        {!isVouchedSafe && !isFlagged && isRisk && (
           <div className="inline-flex items-center gap-[5px] text-[11px] font-semibold mt-[9px] py-[4px] px-[10px] rounded-full bg-coral-bg text-coral-text">
             <svg className="w-[11px] h-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
               <circle cx="12" cy="12" r="9" />
@@ -103,15 +127,22 @@ export default function EmailRow({
               <div className="mt-[14px] flex gap-[8px]">
                 <button
                   onClick={() => onAction(email.id, 'safe')}
-                  className="font-sans text-[12.5px] font-semibold py-[9px] px-[14px] rounded-[10px] border border-line bg-paper-raised text-ink hover:bg-paper active:scale-[0.97] transition cursor-pointer"
+                  className="font-sans text-[12.5px] font-semibold py-[9px] px-[14px] rounded-[10px] border border-line bg-paper-raised text-ink hover:bg-paper active:scale-[0.97] transition cursor-pointer flex items-center gap-1.5"
                 >
-                  Mark as safe
+                  <svg className="w-[13px] h-[13px] text-safe" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Vouch as safe
                 </button>
                 <button
-                  onClick={() => onAction(email.id, 'block')}
-                  className="font-sans text-[12.5px] font-semibold py-[9px] px-[14px] rounded-[10px] border border-teal bg-teal text-white hover:bg-teal-deep active:scale-[0.97] transition cursor-pointer"
+                  onClick={() => onAction(email.id, 'flag')}
+                  className="font-sans text-[12.5px] font-semibold py-[9px] px-[14px] rounded-[10px] border border-coral/30 bg-coral-bg text-coral hover:bg-coral hover:text-white active:scale-[0.97] transition cursor-pointer flex items-center gap-1.5"
                 >
-                  Block sender
+                  <svg className="w-[13px] h-[13px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                    <line x1="4" y1="22" x2="4" y2="15" />
+                  </svg>
+                  Flag as scam
                 </button>
               </div>
             </div>

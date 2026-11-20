@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function CommunityNote({ count = 212 }) {
+export default function CommunityNote({ count = 0 }) {
   if (!count || count <= 0) return null;
 
   return (

@@ -23,6 +23,7 @@ export const config = {
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   safeBrowsingApiKey: process.env.SAFE_BROWSING_API_KEY || '',
+  databaseUrl: process.env.DATABASE_URL || '',
   dbPath: path.resolve(__dirname, '../../vouch.db')
 };
 

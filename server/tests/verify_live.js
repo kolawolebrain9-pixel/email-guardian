@@ -5,7 +5,7 @@ async function verifyAll() {
     { name: 'Vite Main Module', url: 'http://localhost:5173/src/main.jsx' },
     { name: 'Vite App Module', url: 'http://localhost:5173/src/App.jsx' },
     { name: 'Tailwind CSS Output', url: 'http://localhost:5173/src/index.css' },
-    { name: 'Backend Health Direct', url: 'http://localhost:3001/api/health' },
+    { name: 'Backend Health Direct', url: 'http://localhost:3002/api/health' },
     { name: 'Vite Proxy -> Auth Status', url: 'http://localhost:5173/api/auth/status' },
     { name: 'Vite Proxy -> Demo Emails', url: 'http://localhost:5173/api/emails?mode=demo' },
     { name: 'Vite Proxy -> Vouched Stats', url: 'http://localhost:5173/api/stats' }

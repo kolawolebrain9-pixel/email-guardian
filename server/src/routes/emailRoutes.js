@@ -1,9 +1,10 @@
 import express from 'express';
 import { fetchRecentEmails } from '../services/gmailService.js';
+import { deleteUserTokens } from '../services/googleAuth.js';
 import { analyzeThreat } from '../services/threatEngine.js';
 import { generateFriendlyExplanation } from '../services/explanationService.js';
-import { recordAndGetCommunityCount, generateFingerprint } from '../services/communityService.js';
-import { runQuery, getAllRows } from '../db/database.js';
+import { recordAndGetCommunityCount, generateFingerprint, getCommunityThreatStatus } from '../services/communityService.js';
+import { runQuery, getRow, getAllRows } from '../db/database.js';
 
 const router = express.Router();
 
@@ -101,12 +102,44 @@ router.get('/', async (req, res) => {
     const scannedEmails = [];
 
     for (const email of rawEmails) {
+      // Check if user already took action on this email
+      let actionTaken = null;
+      try {
+        const existingScan = await getRow(
+          `SELECT action_taken, risk_level, risk_score FROM scans WHERE user_email = ? AND message_id = ?`,
+          [user.toLowerCase(), email.messageId]
+        );
+        if (existingScan) {
+          actionTaken = existingScan.action_taken || null;
+        }
+      } catch (e) {
+        // Ignore DB lookup error
+      }
+
       const threat = await analyzeThreat(email);
+
+      // Check if the community has already flagged this email pattern
+      const communityThreat = await getCommunityThreatStatus(threat.senderDomain, email.subject);
+      if (communityThreat.isCommunityFlagged && actionTaken !== 'safe') {
+        threat.riskLevel = 'risk';
+        threat.riskScore = Math.max(threat.riskScore, 85);
+        const reportWord = communityThreat.reportCount === 1 ? 'member' : 'members';
+        threat.reasons.unshift(`Reported as a scam by ${communityThreat.reportCount} Vouch community ${reportWord}`);
+      }
+
+      // If user explicitly marked this email as safe, honor their decision
+      if (actionTaken === 'safe') {
+        threat.riskLevel = 'safe';
+        threat.riskScore = 0;
+      }
+
       const explanation = await generateFriendlyExplanation(email, threat.reasons, threat.riskLevel);
       const communityCount = await recordAndGetCommunityCount(
         threat.senderDomain,
         email.subject,
-        threat.riskLevel
+        threat.riskLevel,
+        user,
+        email.messageId
       );
       const fingerprint = generateFingerprint(threat.senderDomain, email.subject);
 
@@ -116,8 +149,8 @@ router.get('/', async (req, res) => {
           `INSERT INTO scans (
              user_email, message_id, thread_id, sender_name, sender_address,
              subject, date, snippet, risk_level, risk_score, reasons,
-             explanation, community_count, fingerprint, scanned_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             explanation, community_count, fingerprint, action_taken, scanned_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(user_email, message_id) DO UPDATE SET
              risk_level = excluded.risk_level,
              risk_score = excluded.risk_score,
@@ -140,6 +173,7 @@ router.get('/', async (req, res) => {
             explanation,
             communityCount,
             fingerprint,
+            actionTaken,
             now
           ]
         );
@@ -160,7 +194,7 @@ router.get('/', async (req, res) => {
         reasons: threat.reasons,
         explanation: explanation,
         communityCount: communityCount,
-        actionTaken: null
+        actionTaken: actionTaken
       });
     }
 
@@ -171,32 +205,77 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     console.error('Failed to fetch/scan emails:', err.message);
+    const isPermissionError = Boolean(err.message && err.message.includes('Insufficient Permission'));
+    const isAuthExpired = Boolean(
+      err.message && (err.message.includes('invalid_grant') || err.message.includes('No credentials found'))
+    );
+
+    if ((isAuthExpired || isPermissionError) && user) {
+      try {
+        await deleteUserTokens(user);
+        console.log(`Cleaned up OAuth tokens for user ${user} (reason: ${err.message})`);
+      } catch (cleanErr) {
+        console.error('Error clearing token:', cleanErr.message);
+      }
+    }
+
+    let warningMsg = `Unable to access Gmail: ${err.message}. Showing sample inbox.`;
+    if (isAuthExpired) {
+      warningMsg = 'Your Google OAuth session has expired. Please click "Connect Gmail" to re-authenticate.';
+    } else if (isPermissionError) {
+      warningMsg = 'Gmail permission was not granted. Make sure to check the "View your email messages" box on the Google consent screen, and verify the Gmail API is enabled in Google Cloud Console.';
+    }
+
     // Fallback to demo mode with warning header so UI stays functional
     res.json({
       emails: DEMO_EMAILS,
       isDemo: true,
-      warning: `Unable to access Gmail: ${err.message}. Showing sample inbox.`
+      authExpired: isAuthExpired || isPermissionError,
+      warning: warningMsg
     });
   }
 });
 
-// POST /api/emails/:id/action — Mark as safe or Block sender
+// POST /api/emails/:id/action — Vouch as safe or Flag as scam
 router.post('/:id/action', async (req, res) => {
   const { id } = req.params;
   const { action, userEmail } = req.body;
 
+  const isSafeAction = action === 'safe' || action === 'vouch';
+  const normalizedAction = isSafeAction ? 'safe' : 'flag';
+  const updatedRiskLevel = isSafeAction ? 'safe' : 'risk';
+
   if (userEmail) {
     await runQuery(
-      `UPDATE scans SET action_taken = ? WHERE message_id = ? AND user_email = ?`,
-      [action, id, userEmail.toLowerCase()]
+      `UPDATE scans SET action_taken = ?, risk_level = ? WHERE message_id = ? AND user_email = ?`,
+      [normalizedAction, updatedRiskLevel, id, userEmail.toLowerCase()]
     );
+
+    // If flagged as scam, also contribute to crowdsourced community threat detection
+    if (!isSafeAction) {
+      try {
+        const scan = await getRow(
+          `SELECT fingerprint FROM scans WHERE message_id = ? AND user_email = ?`,
+          [id, userEmail.toLowerCase()]
+        );
+        if (scan?.fingerprint) {
+          const now = new Date().toISOString();
+          await runQuery(
+            `UPDATE community_fingerprints SET report_count = report_count + 1, last_seen = ? WHERE fingerprint = ?`,
+            [now, scan.fingerprint]
+          );
+        }
+      } catch (e) {
+        // Ignore community increment error
+      }
+    }
   }
 
   res.json({
     success: true,
     id,
-    action,
-    message: action === 'block' ? 'Sender has been flagged and blocked.' : 'Marked as safe.'
+    action: normalizedAction,
+    message: isSafeAction ? 'Vouched as safe.' : 'Flagged as scam — thank you for protecting the community.'
   });
 });
 

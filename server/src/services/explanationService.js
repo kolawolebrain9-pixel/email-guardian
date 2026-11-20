@@ -56,6 +56,10 @@ function generateFallbackExplanation(email, reasons, riskLevel) {
   const reasonsText = reasons.join(' ').toLowerCase();
   const senderName = email.senderName || 'this sender';
 
+  if (reasonsText.includes('vouch community') || reasonsText.includes('reported as a scam by')) {
+    return `Another Vouch member already flagged this exact email as a scam. The community has got your back — do not click any links or reply to the sender.`;
+  }
+
   if (reasonsText.includes('urgency') || reasonsText.includes('pressure') || reasonsText.includes('within 24 hours')) {
     if (reasonsText.includes('spoofed') || reasonsText.includes('link text')) {
       return `This one is trying to rush you. It creates artificial urgency so you click without checking — that pressure is the giveaway. The link underneath doesn't actually connect to the real service.`;

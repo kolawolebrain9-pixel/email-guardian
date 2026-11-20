@@ -22,46 +22,101 @@ export function normalizeSubject(subject) {
 }
 
 /**
- * Record a flagged email in the community database and return the total count of people who received it
+ * Record a flagged email in the community database and return the count of OTHER people who received it.
+ *
+ * Prevents false community counts by:
+ * 1. Tracking scans per user & message_id to avoid counting page refreshes as new victims.
+ * 2. Counting only distinct other users (excluding current user) who received this fingerprint.
+ * 3. Returning 0 if no other distinct users have received the flagged email.
  */
-export async function recordAndGetCommunityCount(senderDomain, subject, riskLevel) {
+export async function recordAndGetCommunityCount(senderDomain, subject, riskLevel, userEmail = '', messageId = '') {
   if (riskLevel === 'safe') return 0;
 
   const fingerprint = generateFingerprint(senderDomain, subject);
   const now = new Date().toISOString();
   const normSub = normalizeSubject(subject);
+  const userLower = (userEmail || '').toLowerCase().trim();
 
-  const existing = await getRow(
-    `SELECT * FROM community_fingerprints WHERE fingerprint = ?`,
-    [fingerprint]
-  );
+  // Check if this specific email scan already exists for this user (prevent duplicate counts on refresh)
+  let isNewScan = true;
+  if (userLower && messageId) {
+    const existingScan = await getRow(
+      `SELECT id FROM scans WHERE user_email = ? AND message_id = ?`,
+      [userLower, messageId]
+    );
+    if (existingScan) {
+      isNewScan = false;
+    }
+  }
 
-  let count = 1;
+  // Count distinct OTHER users who received this flagged email
+  let otherUsersCount = 0;
+  if (userLower) {
+    const otherUsersRow = await getRow(
+      `SELECT COUNT(DISTINCT user_email) as count
+       FROM scans
+       WHERE fingerprint = ? AND user_email != ? AND risk_level IN ('caution', 'risk')`,
+      [fingerprint, userLower]
+    );
+    otherUsersCount = otherUsersRow ? Number(otherUsersRow.count) : 0;
+  }
+
+  // Record in community_fingerprints table on fresh scans only
+  if (isNewScan) {
+    const existing = await getRow(
+      `SELECT * FROM community_fingerprints WHERE fingerprint = ?`,
+      [fingerprint]
+    );
 
     if (existing) {
-    count = existing.report_count + 1;
+      await runQuery(
+        `UPDATE community_fingerprints SET report_count = report_count + 1, last_seen = ? WHERE fingerprint = ?`,
+        [now, fingerprint]
+      );
+    } else {
+      await runQuery(
+        `INSERT INTO community_fingerprints (fingerprint, sender_domain, normalized_subject, report_count, first_seen, last_seen)
+         VALUES (?, ?, ?, 1, ?, ?)`,
+        [fingerprint, senderDomain, normSub, now, now]
+      );
+    }
+
+    // Increment daily global vouched counter
+    const today = new Date().toISOString().slice(0, 10);
     await runQuery(
-      `UPDATE community_fingerprints SET report_count = ?, last_seen = ? WHERE fingerprint = ?`,
-      [count, now, fingerprint]
-    );
-  } else {
-    // Real first-time report — start honestly at 1, no fake seeding
-    count = 1;
-    await runQuery(
-      `INSERT INTO community_fingerprints (fingerprint, sender_domain, normalized_subject, report_count, first_seen, last_seen)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [fingerprint, senderDomain, normSub, count, now, now]
+      `UPDATE stats SET vouched_count = vouched_count + 1 WHERE date = ?`,
+      [today]
     );
   }
 
-  // Increment daily global vouched counter
-  const today = new Date().toISOString().slice(0, 10);
-  await runQuery(
-    `UPDATE stats SET vouched_count = vouched_count + 1 WHERE date = ?`,
-    [today]
-  );
+  return otherUsersCount;
+}
 
-  return count;
+/**
+ * Check if an email pattern has been flagged by the community
+ */
+export async function getCommunityThreatStatus(senderDomain, subject) {
+  const fingerprint = generateFingerprint(senderDomain, subject);
+  try {
+    const row = await getRow(
+      `SELECT report_count FROM community_fingerprints WHERE fingerprint = ?`,
+      [fingerprint]
+    );
+    if (row && Number(row.report_count) > 0) {
+      return {
+        isCommunityFlagged: true,
+        reportCount: Number(row.report_count),
+        fingerprint
+      };
+    }
+  } catch {
+    // Database lookup fallback
+  }
+  return {
+    isCommunityFlagged: false,
+    reportCount: 0,
+    fingerprint
+  };
 }
 
 export async function getGlobalVouchedCount() {

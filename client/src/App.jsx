@@ -59,6 +59,12 @@ export default function App() {
       setEmails(emailData.emails || []);
       setIsDemo(emailData.isDemo);
 
+      if (emailData.authExpired) {
+        setConnected(false);
+        setUser(null);
+        localStorage.removeItem('vouch_user');
+      }
+
       if (emailData.warning) {
         showToast(emailData.warning, 'info');
       }
@@ -90,21 +96,31 @@ export default function App() {
   };
 
   const handleAction = async (id, action) => {
+    const isSafeAction = action === 'safe' || action === 'vouch';
+    const actionKey = isSafeAction ? 'safe' : 'flag';
+
+    // Immediately update UI optimistically
+    setEmails(prev =>
+      prev.map(e => (e.id === id ? { ...e, actionTaken: actionKey, riskLevel: isSafeAction ? 'safe' : 'risk' } : e))
+    );
+    if (isSafeAction) {
+      setOpenIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+
     try {
       const res = await fetch(`/api/emails/${id}/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, userEmail: user?.email })
+        body: JSON.stringify({ action: actionKey, userEmail: user?.email })
       });
       const data = await res.json();
-      showToast(data.message || (action === 'block' ? 'Sender blocked' : 'Marked as safe'));
-
-      // Update email in local state
-      setEmails(prev =>
-        prev.map(e => (e.id === id ? { ...e, actionTaken: action } : e))
-      );
+      showToast(data.message || (isSafeAction ? 'Vouched as safe' : 'Flagged as scam'));
     } catch {
-      showToast(action === 'block' ? 'Sender blocked' : 'Marked as safe');
+      showToast(isSafeAction ? 'Vouched as safe' : 'Flagged as scam');
     }
   };
 
