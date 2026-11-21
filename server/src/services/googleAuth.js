@@ -65,6 +65,21 @@ export function getAuthUrl(state = '') {
 export async function handleOAuthCallback(code) {
   const oauth2Client = getOAuth2Client();
   const { tokens } = await oauth2Client.getToken(code);
+
+  // Google's granular consent screen lets users untick the Gmail checkbox.
+  // Reject the connection up front instead of failing later with "insufficient authentication scopes".
+  const grantedScopes = (tokens.scope || '').split(/\s+/);
+  if (!grantedScopes.includes('https://www.googleapis.com/auth/gmail.readonly')) {
+    try {
+      await oauth2Client.revokeToken(tokens.access_token);
+    } catch {
+      // Ignore revoke failures
+    }
+    const scopeErr = new Error('missing_gmail_scope');
+    scopeErr.code = 'missing_gmail_scope';
+    throw scopeErr;
+  }
+
   oauth2Client.setCredentials(tokens);
 
   // Fetch user profile info

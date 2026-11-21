@@ -21,7 +21,13 @@ export default function App() {
     const authError = urlParams.get('auth_error');
 
     if (authError) {
-      showToast(`Google OAuth error: ${authError}`, 'error');
+      const friendly =
+        authError === 'missing_gmail_scope'
+          ? 'Vouch needs permission to read your emails. Please click "Connect Gmail" again and tick the "View your email messages" box.'
+          : authError === 'access_denied'
+            ? 'Gmail connection was cancelled.'
+            : `Google sign-in error: ${authError}`;
+      showToast(friendly, 'error');
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 

@@ -82,6 +82,7 @@ describe('Vouch Backend Test Suite', () => {
 
     // 1. User previously marked original email as safe
     const now = new Date().toISOString();
+    await runQuery(`DELETE FROM scans WHERE user_email = ?`, [testUser]);
     await runQuery(
       `INSERT INTO scans (
          user_email, message_id, thread_id, sender_name, sender_address,

@@ -270,7 +270,12 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     console.error('Failed to fetch/scan emails:', err.message);
-    const isPermissionError = Boolean(err.message && err.message.includes('Insufficient Permission'));
+    const errMsg = (err.message || '').toLowerCase();
+    const isPermissionError =
+      errMsg.includes('insufficient permission') ||
+      errMsg.includes('insufficient authentication scopes') ||
+      errMsg.includes('access_token_scope_insufficient') ||
+      err.code === 403;
     const isAuthExpired = Boolean(
       err.message && (err.message.includes('invalid_grant') || err.message.includes('No credentials found'))
     );
