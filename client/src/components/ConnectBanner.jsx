@@ -30,10 +30,8 @@ export default function ConnectBanner({
                   <CheckCircle2 className="w-3 h-3" /> Read-Only
                 </span>
               </>
-            ) : isDemo ? (
-              <span>Exploring Demo Mode (Simulated Inbox)</span>
             ) : (
-              <span>Connect your Gmail to scan inbox</span>
+              <span>Sample Inbox Preview — Connect Gmail to scan yours</span>
             )}
           </div>
           <p className="text-ink-faint text-[12px] m-0">
@@ -85,12 +83,6 @@ export default function ConnectBanner({
                 (Google OAuth credentials not configured in .env)
               </span>
             )}
-            <button
-              onClick={onToggleDemo}
-              className="px-3 py-1.5 text-[12px] font-semibold rounded-md-custom border border-line bg-paper hover:bg-line-soft text-ink transition"
-            >
-              {isDemo ? 'Reset Demo' : 'View Demo Inbox'}
-            </button>
           </div>
         )}
       </div>
