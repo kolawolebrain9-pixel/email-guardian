@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, ShieldAlert, Sparkles, Inbox, ShieldCheck } from 'lucide-react';
 import Topbar from './components/Topbar';
 import ConnectBanner from './components/ConnectBanner';
 import EmailRow from './components/EmailRow';
@@ -13,7 +12,6 @@ export default function App() {
   const [isDemo, setIsDemo] = useState(true);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
-  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'needs_review' | 'safe'
 
   // Check URL params for OAuth return or error
   useEffect(() => {
@@ -225,25 +223,6 @@ export default function App() {
     }
   };
 
-  // Compute live threat counts and status
-  const needsReviewCount = emails.filter(e => {
-    const isVouched = e.actionTaken === 'safe' || e.actionTaken === 'vouch';
-    const effectiveRisk = isVouched ? 'safe' : e.riskLevel;
-    return !isVouched && (effectiveRisk === 'caution' || effectiveRisk === 'risk');
-  }).length;
-
-  const totalCount = emails.length;
-
-  // Filter emails based on active pill: 'all' or 'needs_review'
-  const displayedEmails = emails.filter(e => {
-    const isVouched = e.actionTaken === 'safe' || e.actionTaken === 'vouch';
-    const effectiveRisk = isVouched ? 'safe' : e.riskLevel;
-    const isThreat = !isVouched && (effectiveRisk === 'caution' || effectiveRisk === 'risk');
-
-    if (activeFilter === 'needs_review') return isThreat;
-    return true;
-  });
-
   return (
     <div className="max-w-[760px] mx-auto py-9 px-5 pb-[90px]">
       {/* Top Header */}
@@ -261,60 +240,14 @@ export default function App() {
         onToggleDemo={handleToggleDemo}
       />
 
-      {/* Inbox Controls Bar: Action-Driven Status & Filter Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5 px-0.5">
-        {/* Streamlined Filter Pills */}
-        <div className="inline-flex items-center gap-1 bg-paper-raised p-1 rounded-lg border border-line text-[12.5px] font-medium shadow-xs">
-          <button
-            onClick={() => setActiveFilter('all')}
-            className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-              activeFilter === 'all'
-                ? 'bg-teal-deep text-white font-semibold shadow-xs'
-                : 'text-ink-soft hover:text-ink hover:bg-line-soft'
-            }`}
-          >
-            All <span className="opacity-75 tabular-nums text-[11px]">({totalCount})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveFilter('needs_review')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all cursor-pointer ${
-              activeFilter === 'needs_review'
-                ? 'bg-teal-deep text-white font-semibold shadow-xs'
-                : 'text-ink-soft hover:text-ink hover:bg-line-soft'
-            }`}
-          >
-            {needsReviewCount > 0 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse"></span>
-            )}
-            Needs Review
-            <span className={`tabular-nums text-[11px] px-1.5 py-0.5 rounded-full ${
-              needsReviewCount > 0
-                ? activeFilter === 'needs_review' ? 'bg-white/20 text-white font-bold' : 'bg-gold-bg text-gold-text font-bold'
-                : 'opacity-70'
-            }`}>
-              {needsReviewCount}
-            </span>
-          </button>
-        </div>
-
-        {/* Dynamic Action-Driven Status Banner */}
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          {needsReviewCount > 0 ? (
-            <div className="flex items-center gap-1.5 py-1 px-3 rounded-full bg-gold-bg text-gold-text border border-gold/30 text-[12px] font-semibold">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-gold"></span>
-              </span>
-              <span>⚠️ Action Needed: {needsReviewCount} {needsReviewCount === 1 ? 'threat' : 'threats'} to review</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 py-1 px-3 rounded-full bg-safe-bg text-safe border border-[#D1E2D6] text-[12px] font-semibold">
-              <ShieldCheck className="w-3.5 h-3.5 text-safe" />
-              <span>All Clear — 0 Threats Detected</span>
-            </div>
-          )}
-        </div>
+      {/* Eyebrow Subheader */}
+      <div className="flex items-baseline justify-between mx-[2px] mb-[14px]">
+        <span className="text-[11.5px] uppercase tracking-[0.09em] text-ink-faint font-semibold">
+          Inbox
+        </span>
+        <span className="text-[12px] text-ink-faint">
+          Nothing to open, nothing to upload
+        </span>
       </div>
 
       {/* Inbox Rows List */}
@@ -323,24 +256,12 @@ export default function App() {
           <div className="bg-paper-raised border border-line rounded-lg-custom p-8 text-center text-ink-soft text-[14px]">
             Scanning inbox for recent emails and analyzing threat signatures...
           </div>
-        ) : displayedEmails.length === 0 ? (
-          activeFilter === 'needs_review' ? (
-            <div className="bg-paper-raised border border-line rounded-lg-custom p-8 text-center flex flex-col items-center justify-center gap-2 shadow-rest">
-              <div className="w-10 h-10 rounded-full bg-safe-bg text-safe flex items-center justify-center mb-1">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
-              <div className="font-semibold text-ink text-[15px]">Inbox is calm & protected</div>
-              <p className="text-ink-faint text-[13px] max-w-sm m-0">
-                No active threats or unreviewed emails requiring your attention right now.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-paper-raised border border-line rounded-lg-custom p-8 text-center text-ink-faint text-[14px]">
-              No emails found in this view.
-            </div>
-          )
+        ) : emails.length === 0 ? (
+          <div className="bg-paper-raised border border-line rounded-lg-custom p-8 text-center text-ink-faint text-[14px]">
+            No recent emails found in inbox.
+          </div>
         ) : (
-          displayedEmails.map(email => (
+          emails.map(email => (
             <EmailRow
               key={email.id}
               email={email}
