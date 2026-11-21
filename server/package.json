@@ -16,7 +16,6 @@
     "express-rate-limit": "^8.7.5",
     "google-auth-library": "^9.14.2",
     "googleapis": "^190.0.0",
-    "pg": "^8.23.1",
-    "sqlite3": "^6.0.1"
+    "pg": "^8.23.1"
   }
 }
