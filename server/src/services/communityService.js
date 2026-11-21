@@ -70,13 +70,13 @@ export async function recordAndGetCommunityCount(senderDomain, subject, riskLeve
 
     if (existing) {
       await runQuery(
-        `UPDATE community_fingerprints SET report_count = report_count + 1, last_seen = ? WHERE fingerprint = ?`,
+        `UPDATE community_fingerprints SET last_seen = ? WHERE fingerprint = ?`,
         [now, fingerprint]
       );
     } else {
       await runQuery(
         `INSERT INTO community_fingerprints (fingerprint, sender_domain, normalized_subject, report_count, first_seen, last_seen)
-         VALUES (?, ?, ?, 1, ?, ?)`,
+         VALUES (?, ?, ?, 0, ?, ?)`,
         [fingerprint, senderDomain, normSub, now, now]
       );
     }
@@ -90,6 +90,67 @@ export async function recordAndGetCommunityCount(senderDomain, subject, riskLeve
   }
 
   return otherUsersCount;
+}
+
+/**
+ * Retrieve true community consensus:
+ * Counts distinct other users who explicitly vouched this email as safe vs flagged as scam.
+ */
+export async function getCommunityConsensus(senderDomain, subject, userEmail = '') {
+  const fingerprint = generateFingerprint(senderDomain, subject);
+  const userLower = (userEmail || '').toLowerCase().trim();
+
+  try {
+    const row = await getRow(
+      `SELECT 
+         COUNT(DISTINCT CASE WHEN action_taken = 'safe' THEN user_email END) as vouched_count,
+         COUNT(DISTINCT CASE WHEN action_taken = 'flag' THEN user_email END) as flagged_count,
+         COUNT(DISTINCT user_email) as total_received
+       FROM scans 
+       WHERE fingerprint = ? AND user_email != ?`,
+      [fingerprint, userLower]
+    );
+
+    const vouchedCount = row ? Number(row.vouched_count) : 0;
+    const flaggedCount = row ? Number(row.flagged_count) : 0;
+    const totalReceived = row ? Number(row.total_received) : 0;
+
+    if (vouchedCount > 0 && vouchedCount >= flaggedCount) {
+      return {
+        status: 'vouched',
+        vouchedCount,
+        flaggedCount,
+        totalReceived,
+        fingerprint
+      };
+    }
+
+    if (flaggedCount > 0) {
+      return {
+        status: 'flagged',
+        vouchedCount,
+        flaggedCount,
+        totalReceived,
+        fingerprint
+      };
+    }
+
+    return {
+      status: 'none',
+      vouchedCount: 0,
+      flaggedCount: 0,
+      totalReceived,
+      fingerprint
+    };
+  } catch (err) {
+    return {
+      status: 'none',
+      vouchedCount: 0,
+      flaggedCount: 0,
+      totalReceived: 0,
+      fingerprint
+    };
+  }
 }
 
 /**

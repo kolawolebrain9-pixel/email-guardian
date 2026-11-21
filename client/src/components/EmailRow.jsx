@@ -121,7 +121,12 @@ export default function EmailRow({
                 reasons={email.reasons}
               />
 
-              <CommunityNote count={email.communityCount} />
+              <CommunityNote
+                count={email.communityCount}
+                communityStatus={email.communityStatus}
+                vouchedCount={email.communityVouchedCount}
+                flaggedCount={email.communityFlaggedCount}
+              />
 
               {/* Action Buttons */}
               <div className="mt-[14px] flex gap-[8px]">

@@ -1,6 +1,38 @@
 import React from 'react';
 
-export default function CommunityNote({ count = 0 }) {
+export default function CommunityNote({ count = 0, communityStatus = 'none', vouchedCount = 0, flaggedCount = 0 }) {
+  // 1. If other community members vouched this email as safe
+  if (communityStatus === 'vouched' || vouchedCount > 0) {
+    const total = vouchedCount || 1;
+    return (
+      <div className="mt-[13px] flex items-center gap-[9px] bg-safe-bg text-safe text-[12.5px] font-medium py-[10px] px-[13px] rounded-[11px] border border-safe/25 shadow-sm">
+        <svg className="w-[15px] h-[15px] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span>
+          <strong>{total}</strong> {total === 1 ? 'other member' : 'other members'} in the community vouched for this email as safe.
+        </span>
+      </div>
+    );
+  }
+
+  // 2. If community members flagged this email as a scam
+  if (communityStatus === 'flagged' || flaggedCount > 0) {
+    const total = flaggedCount || 1;
+    return (
+      <div className="mt-[13px] flex items-center gap-[9px] bg-coral-bg text-coral-text text-[12.5px] font-medium py-[10px] px-[13px] rounded-[11px] border border-coral/25 shadow-sm">
+        <svg className="w-[15px] h-[15px] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+          <line x1="4" y1="22" x2="4" y2="15" />
+        </svg>
+        <span>
+          <strong>{total}</strong> {total === 1 ? 'member' : 'members'} in the community flagged this email pattern as a scam.
+        </span>
+      </div>
+    );
+  }
+
+  // 3. Neutral note: multiple users received it
   if (!count || count <= 0) return null;
 
   return (

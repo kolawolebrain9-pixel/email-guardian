@@ -3,7 +3,7 @@ import { fetchRecentEmails } from '../services/gmailService.js';
 import { deleteUserTokens } from '../services/googleAuth.js';
 import { analyzeThreat } from '../services/threatEngine.js';
 import { generateFriendlyExplanation } from '../services/explanationService.js';
-import { recordAndGetCommunityCount, generateFingerprint, getCommunityThreatStatus } from '../services/communityService.js';
+import { recordAndGetCommunityCount, generateFingerprint, getCommunityThreatStatus, getCommunityConsensus } from '../services/communityService.js';
 import { runQuery, getRow, getAllRows } from '../db/database.js';
 
 const router = express.Router();
@@ -120,19 +120,30 @@ router.get('/', async (req, res) => {
 
       const threat = await analyzeThreat(email);
 
-      // Check if the community has already flagged this email pattern
-      const communityThreat = await getCommunityThreatStatus(threat.senderDomain, email.subject);
-      if (communityThreat.isCommunityFlagged && actionTaken !== 'safe') {
-        threat.riskLevel = 'risk';
-        threat.riskScore = Math.max(threat.riskScore, 85);
-        const reportWord = communityThreat.reportCount === 1 ? 'member' : 'members';
-        threat.reasons.unshift(`Reported as a scam by ${communityThreat.reportCount} Vouch community ${reportWord}`);
-      }
+      // Check genuine community consensus from actual user actions
+      const consensus = await getCommunityConsensus(threat.senderDomain, email.subject, user);
 
-      // If user explicitly marked this email as safe, honor their decision
+      // 1. If current user explicitly marked this email as safe, honor their decision
       if (actionTaken === 'safe') {
         threat.riskLevel = 'safe';
         threat.riskScore = 0;
+      } else if (actionTaken === 'flag') {
+        threat.riskLevel = 'risk';
+        threat.riskScore = Math.max(threat.riskScore, 85);
+      } else if (consensus.status === 'vouched') {
+        // Community consensus: other members explicitly vouched this email as safe
+        const memberWord = consensus.vouchedCount === 1 ? 'member' : 'members';
+        threat.reasons.unshift(`Vouched as safe by ${consensus.vouchedCount} Vouch community ${memberWord}`);
+        if (threat.riskLevel === 'caution') {
+          threat.riskLevel = 'safe';
+          threat.riskScore = 0;
+        }
+      } else if (consensus.status === 'flagged') {
+        // Community consensus: other members flagged this email pattern as a scam
+        threat.riskLevel = 'risk';
+        threat.riskScore = Math.max(threat.riskScore, 85);
+        const reportWord = consensus.flaggedCount === 1 ? 'member' : 'members';
+        threat.reasons.unshift(`Reported as a scam by ${consensus.flaggedCount} Vouch community ${reportWord}`);
       }
 
       // Reuse cached explanation if available to prevent redundant OpenAI latency and costs
@@ -197,6 +208,9 @@ router.get('/', async (req, res) => {
         reasons: threat.reasons,
         explanation: explanation,
         communityCount: communityCount,
+        communityStatus: consensus.status,
+        communityVouchedCount: consensus.vouchedCount,
+        communityFlaggedCount: consensus.flaggedCount,
         actionTaken: actionTaken
       });
     }
