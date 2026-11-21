@@ -225,32 +225,22 @@ export default function App() {
     }
   };
 
-  // Compute live threat counts and inbox health score
+  // Compute live threat counts and status
   const needsReviewCount = emails.filter(e => {
     const isVouched = e.actionTaken === 'safe' || e.actionTaken === 'vouch';
     const effectiveRisk = isVouched ? 'safe' : e.riskLevel;
     return !isVouched && (effectiveRisk === 'caution' || effectiveRisk === 'risk');
   }).length;
 
-  const safeCount = emails.filter(e => {
-    const isVouched = e.actionTaken === 'safe' || e.actionTaken === 'vouch';
-    const effectiveRisk = isVouched ? 'safe' : e.riskLevel;
-    return isVouched || effectiveRisk === 'safe';
-  }).length;
-
-  const vouchedByUserCount = emails.filter(e => e.actionTaken === 'safe' || e.actionTaken === 'vouch').length;
-
   const totalCount = emails.length;
-  const healthScore = totalCount > 0 ? Math.round((safeCount / totalCount) * 100) : 100;
 
-  // Filter emails based on active pill
+  // Filter emails based on active pill: 'all' or 'needs_review'
   const displayedEmails = emails.filter(e => {
     const isVouched = e.actionTaken === 'safe' || e.actionTaken === 'vouch';
     const effectiveRisk = isVouched ? 'safe' : e.riskLevel;
     const isThreat = !isVouched && (effectiveRisk === 'caution' || effectiveRisk === 'risk');
 
     if (activeFilter === 'needs_review') return isThreat;
-    if (activeFilter === 'safe') return !isThreat;
     return true;
   });
 
@@ -271,9 +261,9 @@ export default function App() {
         onToggleDemo={handleToggleDemo}
       />
 
-      {/* Inbox Controls Bar: Filter Switcher & Health Gauge */}
+      {/* Inbox Controls Bar: Action-Driven Status & Filter Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5 px-0.5">
-        {/* Filter Pills */}
+        {/* Streamlined Filter Pills */}
         <div className="inline-flex items-center gap-1 bg-paper-raised p-1 rounded-lg border border-line text-[12.5px] font-medium shadow-xs">
           <button
             onClick={() => setActiveFilter('all')}
@@ -306,35 +296,24 @@ export default function App() {
               {needsReviewCount}
             </span>
           </button>
-
-          <button
-            onClick={() => setActiveFilter('safe')}
-            className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeFilter === 'safe'
-                ? 'bg-teal-deep text-white font-semibold shadow-xs'
-                : 'text-ink-soft hover:text-ink hover:bg-line-soft'
-            }`}
-          >
-            Safe <span className="opacity-75 tabular-nums text-[11px]">({safeCount})</span>
-            {vouchedByUserCount > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium ${
-                activeFilter === 'safe' ? 'bg-white/20 text-white' : 'bg-safe-bg text-safe border border-[#D1E2D6]'
-              }`}>
-                {vouchedByUserCount} vouched
-              </span>
-            )}
-          </button>
         </div>
 
-        {/* Inbox Health Score Badge */}
+        {/* Dynamic Action-Driven Status Banner */}
         <div className="flex items-center gap-2 self-start sm:self-center">
-          <div className="flex items-center gap-1.5 py-1 px-3 rounded-full bg-safe-bg text-safe border border-[#D1E2D6] text-[12px] font-semibold">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#7FA085] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#7FA085]"></span>
-            </span>
-            <span>Inbox Health: {healthScore}% Calm</span>
-          </div>
+          {needsReviewCount > 0 ? (
+            <div className="flex items-center gap-1.5 py-1 px-3 rounded-full bg-gold-bg text-gold-text border border-gold/30 text-[12px] font-semibold">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-gold"></span>
+              </span>
+              <span>⚠️ Action Needed: {needsReviewCount} {needsReviewCount === 1 ? 'threat' : 'threats'} to review</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 py-1 px-3 rounded-full bg-safe-bg text-safe border border-[#D1E2D6] text-[12px] font-semibold">
+              <ShieldCheck className="w-3.5 h-3.5 text-safe" />
+              <span>All Clear — 0 Threats Detected</span>
+            </div>
+          )}
         </div>
       </div>
 
