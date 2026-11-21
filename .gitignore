@@ -2,9 +2,9 @@
 node_modules/
 client/node_modules/
 server/node_modules/
-dist/
-client/dist/
 server/dist/
+!client/dist/
+!client/dist/**
 .DS_Store
 
 # Environment variables & secrets
@@ -25,7 +25,6 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
