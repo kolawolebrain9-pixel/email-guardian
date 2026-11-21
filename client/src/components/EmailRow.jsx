@@ -132,7 +132,7 @@ export default function EmailRow({
               <div className="mt-[14px] flex gap-[8px]">
                 <button
                   onClick={() => onAction(email.id, 'safe')}
-                  className="font-sans text-[12.5px] font-semibold py-[9px] px-[14px] rounded-[10px] border border-line bg-paper-raised text-ink hover:bg-paper active:scale-[0.97] transition cursor-pointer flex items-center gap-1.5"
+                  className="font-sans text-[12.5px] font-semibold py-[9px] px-[15px] rounded-[10px] border border-line bg-paper-raised text-ink hover:border-safe/60 hover:bg-safe-bg hover:text-safe active:scale-[0.96] transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
                 >
                   <svg className="w-[13px] h-[13px] text-safe" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
@@ -141,7 +141,7 @@ export default function EmailRow({
                 </button>
                 <button
                   onClick={() => onAction(email.id, 'flag')}
-                  className="font-sans text-[12.5px] font-semibold py-[9px] px-[14px] rounded-[10px] border border-coral/30 bg-coral-bg text-coral hover:bg-coral hover:text-white active:scale-[0.97] transition cursor-pointer flex items-center gap-1.5"
+                  className="font-sans text-[12.5px] font-semibold py-[9px] px-[15px] rounded-[10px] border border-coral/30 bg-coral-bg text-coral hover:bg-coral hover:text-white active:scale-[0.96] transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
                 >
                   <svg className="w-[13px] h-[13px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                     <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
