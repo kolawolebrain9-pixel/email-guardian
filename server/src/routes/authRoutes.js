@@ -1,11 +1,12 @@
 import express from 'express';
+import crypto from 'crypto';
 import { getAuthUrl, handleOAuthCallback, deleteUserTokens } from '../services/googleAuth.js';
 import { getRow } from '../db/database.js';
 import { config } from '../config.js';
 
 const router = express.Router();
 
-// 1. Initiate Google OAuth Flow
+// 1. Initiate Google OAuth Flow (Protected with CSRF State)
 router.get('/google', (req, res) => {
   if (!config.google.clientId || !config.google.clientSecret) {
     return res.status(400).json({
@@ -14,8 +15,16 @@ router.get('/google', (req, res) => {
     });
   }
 
-  const authUrl = getAuthUrl();
-  // If request wants JSON URL, return JSON; otherwise redirect
+  const state = crypto.randomBytes(16).toString('hex');
+  const authUrl = getAuthUrl(state);
+
+  res.cookie('oauth_state', state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 10 * 60 * 1000 // 10 minutes
+  });
+
   if (req.query.format === 'json') {
     return res.json({ url: authUrl });
   }
@@ -24,11 +33,19 @@ router.get('/google', (req, res) => {
 
 // 2. OAuth Callback
 router.get('/callback', async (req, res) => {
-  const { code, error } = req.query;
+  const { code, state, error } = req.query;
+  const cookieHeader = req.headers.cookie || '';
+  const storedState = cookieHeader.split('; ').find(row => row.startsWith('oauth_state='))?.split('=')[1];
 
   if (error) {
     console.error('Google OAuth error:', error);
     return res.redirect(`${config.clientUrl}/?auth_error=${encodeURIComponent(error)}`);
+  }
+
+  // Verify OAuth state parameter if present to protect against CSRF
+  if (storedState && state && storedState !== state) {
+    console.warn('OAuth state mismatch detected.');
+    return res.redirect(`${config.clientUrl}/?auth_error=state_mismatch`);
   }
 
   if (!code) {
@@ -37,6 +54,7 @@ router.get('/callback', async (req, res) => {
 
   try {
     const user = await handleOAuthCallback(code);
+    res.clearCookie('oauth_state');
     res.redirect(`${config.clientUrl}/?connected=true&user=${encodeURIComponent(user.email)}&name=${encodeURIComponent(user.name || '')}`);
   } catch (err) {
     console.error('OAuth token exchange error:', err);

@@ -135,6 +135,7 @@ export default function App() {
     localStorage.removeItem('vouch_user');
     setUser(null);
     setConnected(false);
+    setEmails([]);
     showToast('Gmail account disconnected.');
     checkAuthAndLoad();
   };

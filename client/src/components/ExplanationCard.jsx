@@ -20,6 +20,23 @@ export default function ExplanationCard({ explanation, reasons = [] }) {
     });
   };
 
+  // Helper to render safe bold tags without dangerouslySetInnerHTML
+  const renderFormattedText = (text) => {
+    if (!text) return null;
+    const parts = text.split(/(<b>.*?<\/b>|<strong>.*?<\/strong>)/gi);
+    return parts.map((part, index) => {
+      const bMatch = part.match(/^<b>(.*?)<\/b>$/i) || part.match(/^<strong>(.*?)<\/strong>$/i);
+      if (bMatch) {
+        return (
+          <strong key={index} className="text-teal-deep font-semibold">
+            {bMatch[1]}
+          </strong>
+        );
+      }
+      return <span key={index}>{part}</span>;
+    });
+  };
+
   return (
     <div className="flex gap-[11px] items-start">
       {/* Teal Shield Avatar */}
@@ -32,10 +49,9 @@ export default function ExplanationCard({ explanation, reasons = [] }) {
       {/* Conversational Speech Bubble */}
       <div className="bg-paper border border-line rounded-tl-[4px] rounded-tr-[16px] rounded-br-[16px] rounded-bl-[16px] p-[13px_15px] text-[14px] leading-[1.6] text-ink flex-1 min-w-0">
         {explanation && (
-          <div
-            className="speech-text [&_b]:text-teal-deep [&_b]:font-semibold"
-            dangerouslySetInnerHTML={{ __html: explanation }}
-          />
+          <div className="speech-text text-[14px] leading-[1.6]">
+            {renderFormattedText(explanation)}
+          </div>
         )}
 
         {reasons && reasons.length > 0 && (

@@ -51,13 +51,14 @@ export function getOAuth2Client() {
   );
 }
 
-export function getAuthUrl() {
+export function getAuthUrl(state = '') {
   const oauth2Client = getOAuth2Client();
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: config.google.scopes,
-    include_granted_scopes: true
+    include_granted_scopes: true,
+    ...(state ? { state } : {})
   });
 }
 

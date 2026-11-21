@@ -102,15 +102,17 @@ router.get('/', async (req, res) => {
     const scannedEmails = [];
 
     for (const email of rawEmails) {
-      // Check if user already took action on this email
+      // Check if user already took action on this email or if we already have an explanation cached
       let actionTaken = null;
+      let cachedExplanation = null;
       try {
         const existingScan = await getRow(
-          `SELECT action_taken, risk_level, risk_score FROM scans WHERE user_email = ? AND message_id = ?`,
+          `SELECT action_taken, risk_level, risk_score, explanation FROM scans WHERE user_email = ? AND message_id = ?`,
           [user.toLowerCase(), email.messageId]
         );
         if (existingScan) {
           actionTaken = existingScan.action_taken || null;
+          cachedExplanation = existingScan.explanation || null;
         }
       } catch (e) {
         // Ignore DB lookup error
@@ -133,7 +135,8 @@ router.get('/', async (req, res) => {
         threat.riskScore = 0;
       }
 
-      const explanation = await generateFriendlyExplanation(email, threat.reasons, threat.riskLevel);
+      // Reuse cached explanation if available to prevent redundant OpenAI latency and costs
+      const explanation = cachedExplanation || await generateFriendlyExplanation(email, threat.reasons, threat.riskLevel);
       const communityCount = await recordAndGetCommunityCount(
         threat.senderDomain,
         email.subject,
