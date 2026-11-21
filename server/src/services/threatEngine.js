@@ -12,6 +12,10 @@ const MONITORED_BRANDS = [
   { name: 'Google', domains: ['google.com', 'accounts.google.com'] },
   { name: 'Microsoft', domains: ['microsoft.com', 'office.com', 'live.com'] },
   { name: 'Netflix', domains: ['netflix.com'] },
+  { name: 'Meta', domains: ['meta.com', 'facebook.com', 'facebookmail.com', 'metamail.com'] },
+  { name: 'Facebook', domains: ['facebook.com', 'facebookmail.com'] },
+  { name: 'Instagram', domains: ['instagram.com', 'mail.instagram.com'] },
+  { name: 'LinkedIn', domains: ['linkedin.com'] },
   { name: 'IRS', domains: ['irs.gov'] },
   { name: 'Geek Squad', domains: ['bestbuy.com', 'geeksquad.com'] },
   { name: 'DocuSign', domains: ['docusign.com', 'docusign.net'] },
@@ -22,12 +26,15 @@ const MONITORED_BRANDS = [
 
 const HIGH_URGENCY_PATTERNS = [
   /within\s+24\s+hours/i,
-  /account\s+(?:has\s+been\s+)?suspended/i,
+  /account\s+(?:has\s+been\s+)?(?:suspended|restricted|disabled|locked|terminated|flagged|deactivated)/i,
+  /restricted\s+from\s+(?:advertising|posting|access|using)/i,
+  /policy\s+violation/i,
   /account\s+locked/i,
   /verify\s+your\s+account(?:\s+immediately)?/i,
   /unusual\s+login\s+attempt/i,
+  /unauthorized\s+(?:access|login|activity)/i,
   /update\s+payment\s+information/i,
-  /security\s+alert/i,
+  /security\s+(?:alert|warning|notice|incident)/i,
   /immediate\s+action\s+required/i,
   /unless\s+you\s+act\s+now/i,
   /action\s+required/i

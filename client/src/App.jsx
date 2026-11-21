@@ -238,6 +238,8 @@ export default function App() {
     return isVouched || effectiveRisk === 'safe';
   }).length;
 
+  const vouchedByUserCount = emails.filter(e => e.actionTaken === 'safe' || e.actionTaken === 'vouch').length;
+
   const totalCount = emails.length;
   const healthScore = totalCount > 0 ? Math.round((safeCount / totalCount) * 100) : 100;
 
@@ -307,13 +309,20 @@ export default function App() {
 
           <button
             onClick={() => setActiveFilter('safe')}
-            className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+            className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
               activeFilter === 'safe'
                 ? 'bg-teal-deep text-white font-semibold shadow-xs'
                 : 'text-ink-soft hover:text-ink hover:bg-line-soft'
             }`}
           >
-            Safe & Vouched <span className="opacity-75 tabular-nums text-[11px]">({safeCount})</span>
+            Safe <span className="opacity-75 tabular-nums text-[11px]">({safeCount})</span>
+            {vouchedByUserCount > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium ${
+                activeFilter === 'safe' ? 'bg-white/20 text-white' : 'bg-safe-bg text-safe border border-[#D1E2D6]'
+              }`}>
+                {vouchedByUserCount} vouched
+              </span>
+            )}
           </button>
         </div>
 
