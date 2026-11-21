@@ -144,5 +144,27 @@ describe('Vouch Backend Test Suite', () => {
     assert.equal(threat.riskScore, 0);
     assert.deepEqual(threat.reasons, ['Previously vouched as safe by you']);
   });
+
+  test('Trust never skips verification: hard signals are detected regardless of prior vouches', async () => {
+    // Clean follow-up from a trusted sender: no hard signals, so a vouch may silence soft warnings
+    const clean = await analyzeThreat({
+      subject: 'Action required: review your weekly invoice',
+      senderName: 'CloudHost Billing',
+      senderAddress: 'billing@billing.cloudhost.io',
+      bodyText: 'Action required: please review your invoice in the dashboard.',
+      bodyHtml: null
+    });
+    assert.deepEqual(clean.hardSignals, [], 'Urgency wording alone is not a hard signal');
+
+    // Same trusted sender + subject, but the link is disguised: vouch must NOT hide this
+    const spoofed = await analyzeThreat({
+      subject: 'Action required: review your weekly invoice',
+      senderName: 'CloudHost Billing',
+      senderAddress: 'billing@billing.cloudhost.io',
+      bodyText: 'Please review your invoice.',
+      bodyHtml: '<a href="https://cloudhost-billing.verify-id-check.com/pay">billing.cloudhost.io</a>'
+    });
+    assert.ok(spoofed.hardSignals.includes('spoofed_link'), 'Disguised link is flagged as a hard signal');
+  });
 });
 

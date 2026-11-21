@@ -102,75 +102,81 @@ router.get('/', async (req, res) => {
     const scannedEmails = [];
 
     for (const email of rawEmails) {
+      // Every email is ALWAYS fully scanned, even if the user vouched for similar emails before
       const threat = await analyzeThreat(email);
       const fingerprint = generateFingerprint(threat.senderDomain, email.subject);
+      const userLower = user.toLowerCase();
+      const senderLower = (email.senderAddress || '').toLowerCase();
 
-      // Check if user already took action on this email or if we already have an explanation cached
+      // actionTaken: decision the user made on THIS exact message
+      // inheritedAction: decision carried over from an earlier, similar message
       let actionTaken = null;
+      let inheritedAction = null;
       let cachedExplanation = null;
       try {
-        // 1. Direct check by messageId for this user
         const existingScan = await getRow(
-          `SELECT action_taken, risk_level, risk_score, explanation FROM scans WHERE user_email = ? AND message_id = ?`,
-          [user.toLowerCase(), email.messageId]
+          `SELECT action_taken, explanation FROM scans WHERE user_email = ? AND message_id = ?`,
+          [userLower, email.messageId]
         );
-        if (existingScan?.action_taken) {
-          actionTaken = existingScan.action_taken;
+        if (existingScan) {
+          actionTaken = existingScan.action_taken || null;
           cachedExplanation = existingScan.explanation || null;
         }
 
-        // 2. If no direct action on this specific message, check if user previously vouched this email pattern (fingerprint)
-        if (!actionTaken) {
-          const priorVouch = await getRow(
-            `SELECT action_taken FROM scans 
-             WHERE user_email = ? AND fingerprint = ? AND action_taken IS NOT NULL 
+        // Carry over a past decision only when the EXACT same sender address sent
+        // the same email pattern (or replied in the same thread). Domain alone is not enough.
+        if (!actionTaken && senderLower) {
+          const prior = await getRow(
+            `SELECT action_taken FROM scans
+             WHERE user_email = ? AND LOWER(sender_address) = ? AND action_taken IS NOT NULL
+               AND (fingerprint = ? OR thread_id = ?)
              ORDER BY id DESC LIMIT 1`,
-            [user.toLowerCase(), fingerprint]
+            [userLower, senderLower, fingerprint, email.threadId || '']
           );
-          if (priorVouch?.action_taken) {
-            actionTaken = priorVouch.action_taken;
-          }
-        }
-
-        // 3. Also check if user vouched earlier messages in the same thread
-        if (!actionTaken && email.threadId) {
-          const priorThreadVouch = await getRow(
-            `SELECT action_taken FROM scans 
-             WHERE user_email = ? AND thread_id = ? AND action_taken IS NOT NULL 
-             ORDER BY id DESC LIMIT 1`,
-            [user.toLowerCase(), email.threadId]
-          );
-          if (priorThreadVouch?.action_taken) {
-            actionTaken = priorThreadVouch.action_taken;
-          }
-        }
-
-        // 4. Also check by exact sender_address and subject
-        if (!actionTaken && email.senderAddress && email.subject) {
-          const priorExactVouch = await getRow(
-            `SELECT action_taken FROM scans 
-             WHERE user_email = ? AND sender_address = ? AND subject = ? AND action_taken IS NOT NULL 
-             ORDER BY id DESC LIMIT 1`,
-            [user.toLowerCase(), email.senderAddress, email.subject]
-          );
-          if (priorExactVouch?.action_taken) {
-            actionTaken = priorExactVouch.action_taken;
+          if (prior?.action_taken) {
+            inheritedAction = prior.action_taken;
           }
         }
       } catch (e) {
         // Ignore DB lookup error
       }
 
+      const hardSignals = threat.hardSignals || [];
+      const hasSafeBrowsingHit = hardSignals.includes('safe_browsing');
+      let vouchOverridden = false;
+      // Only the user's own decision on this exact message is stored as action_taken.
+      // Inherited decisions are display-only so they never inflate community vote counts.
+      const directActionForDb = actionTaken;
+
       // Check genuine community consensus from actual user actions
       const consensus = await getCommunityConsensus(threat.senderDomain, email.subject, user);
 
-      // 1. If current user explicitly marked this email or its pattern as safe, honor their decision
-      if (actionTaken === 'safe') {
+      if (actionTaken === 'safe' && !hasSafeBrowsingHit) {
+        // User reviewed this exact email and marked it safe. Only an authoritative
+        // Google Safe Browsing hit can override that.
         threat.riskLevel = 'safe';
         threat.riskScore = 0;
-        threat.reasons = ['Previously vouched as safe by you'];
-        cachedExplanation = null; // Do not show scam warning text for a vouched email
-      } else if (actionTaken === 'flag') {
+        threat.reasons = ['Vouched as safe by you'];
+        cachedExplanation = null;
+      } else if (inheritedAction === 'safe' && hardSignals.length === 0) {
+        // New email from a sender the user trusts, and the fresh scan found no hard
+        // evidence of an attack: suppress soft warnings (urgency wording, etc.)
+        actionTaken = 'safe';
+        threat.riskLevel = 'safe';
+        threat.riskScore = 0;
+        threat.reasons = ['You vouched for this sender before, and this email passed all checks'];
+        cachedExplanation = null;
+      } else if ((actionTaken === 'safe' || inheritedAction === 'safe') && hardSignals.length > 0) {
+        // Trust does not override verification: this email has new, concrete warning signs
+        vouchOverridden = true;
+        actionTaken = null;
+        cachedExplanation = null;
+        threat.riskLevel = 'risk';
+        threat.riskScore = Math.max(threat.riskScore, 70);
+        threat.reasons.unshift('You marked emails like this as safe before, but this one has new warning signs');
+        threat.reasons = threat.reasons.slice(0, 4);
+      } else if (actionTaken === 'flag' || inheritedAction === 'flag') {
+        actionTaken = 'flag';
         threat.riskLevel = 'risk';
         threat.riskScore = Math.max(threat.riskScore, 85);
       } else if (consensus.status === 'vouched') {
@@ -235,7 +241,7 @@ router.get('/', async (req, res) => {
             explanation,
             communityCount,
             fingerprint,
-            actionTaken,
+            directActionForDb,
             now
           ]
         );
@@ -259,7 +265,8 @@ router.get('/', async (req, res) => {
         communityStatus: consensus.status,
         communityVouchedCount: consensus.vouchedCount,
         communityFlaggedCount: consensus.flaggedCount,
-        actionTaken: actionTaken
+        actionTaken: actionTaken,
+        vouchOverridden: vouchOverridden
       });
     }
 

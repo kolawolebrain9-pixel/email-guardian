@@ -63,11 +63,12 @@ export default function App() {
       const emailData = await emailRes.json();
 
       let fetchedEmails = emailData.emails || [];
-      try {
+      // For real inboxes the server is the single source of truth: it re-verifies every
+      // email even if the user vouched for it before. Local memory is only used for the demo inbox.
+      if (emailData.isDemo) try {
         const storedActions = JSON.parse(localStorage.getItem('vouch_actions') || '{}');
         fetchedEmails = fetchedEmails.map(e => {
-          const normKey = `${(e.senderAddress || e.sender || '').toLowerCase()}:${(e.subject || '').toLowerCase()}`;
-          const remembered = storedActions[e.id] || storedActions[e.messageId] || storedActions[normKey];
+          const remembered = storedActions[e.id] || storedActions[e.messageId];
           if (remembered === 'safe' || e.actionTaken === 'safe') {
             return {
               ...e,
@@ -110,8 +111,7 @@ export default function App() {
           try {
             const storedActions = JSON.parse(localStorage.getItem('vouch_actions') || '{}');
             demoList = demoList.map(e => {
-              const normKey = `${(e.senderAddress || e.sender || '').toLowerCase()}:${(e.subject || '').toLowerCase()}`;
-              const remembered = storedActions[e.id] || storedActions[e.messageId] || storedActions[normKey];
+              const remembered = storedActions[e.id] || storedActions[e.messageId];
               if (remembered === 'safe' || e.actionTaken === 'safe') {
                 return {
                   ...e,
@@ -177,11 +177,6 @@ export default function App() {
     try {
       const storedActions = JSON.parse(localStorage.getItem('vouch_actions') || '{}');
       storedActions[id] = actionKey;
-      const target = emails.find(e => e.id === id || e.messageId === id);
-      if (target) {
-        const normKey = `${(target.senderAddress || target.sender || '').toLowerCase()}:${(target.subject || '').toLowerCase()}`;
-        storedActions[normKey] = actionKey;
-      }
       localStorage.setItem('vouch_actions', JSON.stringify(storedActions));
     } catch {}
 

@@ -133,6 +133,15 @@ export async function analyzeThreat(email) {
     riskLevel = 'safe';
   }
 
+  // Hard signals: concrete technical evidence of an attack.
+  // A user's earlier "safe" vouch must NEVER silence these.
+  const hardSignals = [];
+  if (safeBrowsingResult.hasMatch) hardSignals.push('safe_browsing');
+  if (impersonation.isImpersonating) hardSignals.push('brand_impersonation');
+  if (linkAnalysis.spoofedLinks.length > 0) hardSignals.push('spoofed_link');
+  if (linkAnalysis.ipLinks.length > 0) hardSignals.push('ip_link');
+  if (reasons.some((r) => r.startsWith('Replies are directed to'))) hardSignals.push('reply_to_redirect');
+
   // Ensure 2-3 concise bullet points for flagged emails
   const finalReasons = reasons.slice(0, 3);
   if (riskLevel === 'safe' && finalReasons.length === 0) {
@@ -144,7 +153,8 @@ export async function analyzeThreat(email) {
     riskScore: Math.min(100, score),
     reasons: finalReasons,
     links: linkAnalysis.allLinks,
-    senderDomain
+    senderDomain,
+    hardSignals
   };
 }
 
