@@ -1,7 +1,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { encryptToken, decryptToken } from '../src/services/googleAuth.js';
-import { analyzeThreat } from '../src/services/threatEngine.js';
+import { analyzeThreat, checkDomainReputation, getRootDomain } from '../src/services/threatEngine.js';
 import { generateFingerprint, normalizeSubject } from '../src/services/communityService.js';
 import { initDb, runQuery, getRow } from '../src/db/database.js';
 
@@ -165,6 +165,26 @@ describe('Vouch Backend Test Suite', () => {
       bodyHtml: '<a href="https://cloudhost-billing.verify-id-check.com/pay">billing.cloudhost.io</a>'
     });
     assert.ok(spoofed.hardSignals.includes('spoofed_link'), 'Disguised link is flagged as a hard signal');
+  });
+
+  test('Domain Reputation & Age: Identifies established vs suspicious domains', async () => {
+    // 1. Root domain extraction
+    assert.equal(getRootDomain('alerts.chase.com'), 'chase.com');
+    assert.equal(getRootDomain('security.update.paypal.com'), 'paypal.com');
+
+    // 2. Established high-trust domains
+    const established = await checkDomainReputation('accounts.google.com');
+    assert.equal(established.isSuspicious, false);
+    assert.ok(established.reputationScore >= 90);
+
+    // 3. Known suspicious host
+    const badDomain = await checkDomainReputation('secure-bank-login.xyz');
+    assert.equal(badDomain.isSuspicious, true);
+    assert.ok(badDomain.reputationScore <= 20);
+
+    // 4. High-risk disposable TLD heuristic
+    const highRiskTld = await checkDomainReputation('random-fast-phish.top');
+    assert.equal(highRiskTld.isSuspicious, true);
   });
 });
 

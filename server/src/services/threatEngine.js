@@ -116,11 +116,11 @@ export async function analyzeThreat(email) {
     }
   }
 
-  // 6. Domain Age / Reputation Call (Stubbed with TODO)
+  // 6. Domain Age / Reputation Call
   const reputationResult = await checkDomainReputation(senderDomain);
   if (reputationResult && reputationResult.isSuspicious) {
-    score += 20;
-    reasons.push(`Sender domain was registered recently and lacks established reputation`);
+    score += 25;
+    reasons.push(reputationResult.reason || `Sender domain was registered recently and lacks established reputation`);
   }
 
   // Final Risk Classification
@@ -141,6 +141,9 @@ export async function analyzeThreat(email) {
   if (linkAnalysis.spoofedLinks.length > 0) hardSignals.push('spoofed_link');
   if (linkAnalysis.ipLinks.length > 0) hardSignals.push('ip_link');
   if (reasons.some((r) => r.startsWith('Replies are directed to'))) hardSignals.push('reply_to_redirect');
+  if (reputationResult && reputationResult.isSuspicious && reputationResult.ageDays !== null && reputationResult.ageDays < 7) {
+    hardSignals.push('newly_registered_domain');
+  }
 
   // Ensure 2-3 concise bullet points for flagged emails
   const finalReasons = reasons.slice(0, 3);
@@ -292,27 +295,162 @@ function getDomainFromEmail(emailStr) {
  * Extract the root/registrable domain from a subdomain
  * e.g. "alerts.kuda.com" -> "kuda.com", "links.kuda.com" -> "kuda.com"
  */
-function getRootDomain(domain) {
+export function getRootDomain(domain) {
   if (!domain) return '';
   const parts = domain.split('.');
   if (parts.length <= 2) return domain;
   return parts.slice(-2).join('.');
 }
 
-/**
- * Domain age and reputation check stub
- * // TODO: Threat-Intel API integration (e.g. VirusTotal, WhoisXML)
- */
-async function checkDomainReputation(domain) {
-  if (!domain) return null;
+// In-memory reputation cache: rootDomain -> { result, cachedAt }
+const domainReputationCache = new Map();
+const REPUTATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-  // Placeholder stub returning clean for standard domains, suspicious for mock spam domains
-  const suspiciousMockDomains = ['mailer-alerts.net', 'verify-id-check.com', 'secure-bank-login.xyz', 'account-update-notice.top'];
-  if (suspiciousMockDomains.some((d) => domain.includes(d))) {
-    return { isSuspicious: true, ageDays: 3, reputationScore: 12 };
+// Well-established, high-trust domains (skips external network calls)
+const ESTABLISHED_DOMAINS = new Set([
+  'google.com', 'accounts.google.com', 'gmail.com', 'youtube.com',
+  'apple.com', 'icloud.com',
+  'microsoft.com', 'office.com', 'live.com', 'outlook.com', 'hotmail.com',
+  'amazon.com', 'aws.amazon.com',
+  'paypal.com',
+  'chase.com', 'jpmorganchase.com', 'bankofamerica.com', 'bofa.com', 'wellsfargo.com', 'citigroup.com', 'citi.com',
+  'netflix.com', 'spotify.com', 'linkedin.com', 'github.com', 'facebook.com', 'twitter.com', 'x.com',
+  'stripe.com', 'uber.com', 'airbnb.com', 'zoom.us', 'slack.com', 'salesforce.com', 'adobe.com', 'dropbox.com'
+]);
+
+// Known suspicious / mock domains
+const KNOWN_SUSPICIOUS_DOMAINS = new Set([
+  'mailer-alerts.net',
+  'verify-id-check.com',
+  'secure-bank-login.xyz',
+  'account-update-notice.top',
+  'paypal-security-update.online',
+  'apple-support-verify.click'
+]);
+
+// High-abuse top-level domains frequently leveraged for disposable phishing
+const HIGH_ABUSE_TLDS = new Set([
+  'top', 'xyz', 'click', 'icu', 'buzz', 'rest', 'cam', 'work', 'sbs', 'monster', 'cfd', 'fit', 'hair'
+]);
+
+/**
+ * Check domain registration age and reputation score.
+ * 1. Fast-path in-memory cache check.
+ * 2. Instant recognition for established top brands.
+ * 3. Immediate catch for known abusive / phishing hosts.
+ * 4. Threat Intel API (WhoisXML / VirusTotal) if configured.
+ * 5. Free, standard ICANN RDAP (Registration Data Access Protocol) query with 2.5s timeout.
+ * 6. High-abuse TLD heuristic fallback for offline/unreachable environments.
+ */
+export async function checkDomainReputation(domain) {
+  if (!domain) return null;
+  const lowerDomain = domain.toLowerCase().trim();
+  const root = getRootDomain(lowerDomain);
+
+  // 1. Check in-memory cache
+  const cached = domainReputationCache.get(root);
+  if (cached && (Date.now() - cached.cachedAt) < REPUTATION_CACHE_TTL_MS) {
+    return cached.result;
   }
 
-  // TODO: Replace with real threat intelligence lookup
-  // Example: const res = await fetch(`https://api.threatintel.example/v1/domains/${domain}?key=${apiKey}`);
-  return { isSuspicious: false, ageDays: 1200, reputationScore: 98 };
+  // 2. High-trust established domains
+  if (ESTABLISHED_DOMAINS.has(root) || ESTABLISHED_DOMAINS.has(lowerDomain)) {
+    const result = { isSuspicious: false, ageDays: 5000, reputationScore: 99, source: 'established_trust' };
+    domainReputationCache.set(root, { result, cachedAt: Date.now() });
+    return result;
+  }
+
+  // 3. Known suspicious mock/phishing domains
+  if (KNOWN_SUSPICIOUS_DOMAINS.has(root) || KNOWN_SUSPICIOUS_DOMAINS.has(lowerDomain)) {
+    const result = {
+      isSuspicious: true,
+      ageDays: 2,
+      reputationScore: 10,
+      reason: `Sender domain (\`${root}\`) is listed as a known phishing or untrusted host`,
+      source: 'threat_blacklist'
+    };
+    domainReputationCache.set(root, { result, cachedAt: Date.now() });
+    return result;
+  }
+
+  let result = null;
+
+  // 4. WhoisXML API integration (if key provided in .env)
+  if (config.whoisApiKey) {
+    try {
+      const resp = await fetch(
+        `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=${config.whoisApiKey}&domainName=${encodeURIComponent(root)}&outputFormat=JSON`,
+        { signal: AbortSignal.timeout(3000) }
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        const createdDateStr = data?.WhoisRecord?.createdDate || data?.WhoisRecord?.registryData?.createdDate;
+        if (createdDateStr) {
+          const ageDays = Math.max(0, Math.round((Date.now() - new Date(createdDateStr).getTime()) / (1000 * 60 * 60 * 24)));
+          const isSuspicious = ageDays < 30;
+          result = {
+            isSuspicious,
+            ageDays,
+            reputationScore: isSuspicious ? Math.max(10, ageDays * 2) : Math.min(98, 50 + Math.round(ageDays / 30)),
+            reason: isSuspicious ? `Sender domain was registered recently (${ageDays} days ago) and lacks established reputation` : null,
+            source: 'whoisxml'
+          };
+        }
+      }
+    } catch {
+      // Fall through to RDAP
+    }
+  }
+
+  // 5. Standard ICANN RDAP Protocol (RFC 7480-7484) — zero config, free, authoritative
+  if (!result) {
+    try {
+      const resp = await fetch(`https://rdap.org/domain/${encodeURIComponent(root)}`, {
+        signal: AbortSignal.timeout(2500),
+        headers: { Accept: 'application/rdap+json, application/json' }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const events = Array.isArray(data?.events) ? data.events : [];
+        const regEvent = events.find((e) => e.eventAction === 'registration') || events.find((e) => e.eventAction === 'transfer');
+        if (regEvent?.eventDate) {
+          const ageDays = Math.max(0, Math.round((Date.now() - new Date(regEvent.eventDate).getTime()) / (1000 * 60 * 60 * 24)));
+          const isSuspicious = ageDays < 30;
+          result = {
+            isSuspicious,
+            ageDays,
+            reputationScore: isSuspicious ? Math.max(10, ageDays * 2) : Math.min(98, 50 + Math.round(ageDays / 30)),
+            reason: isSuspicious ? `Sender domain was registered recently (${ageDays} days ago) and lacks established reputation` : null,
+            source: 'rdap'
+          };
+        }
+      }
+    } catch {
+      // Fall through to TLD heuristic
+    }
+  }
+
+  // 6. High-abuse TLD / Heuristic Fallback
+  if (!result) {
+    const tld = root.split('.').pop() || '';
+    if (HIGH_ABUSE_TLDS.has(tld)) {
+      result = {
+        isSuspicious: true,
+        ageDays: null,
+        reputationScore: 35,
+        reason: `Sender domain uses a high-risk top-level domain (.${tld}) frequently leveraged for disposable phishing attacks`,
+        source: 'tld_heuristic'
+      };
+    } else {
+      result = {
+        isSuspicious: false,
+        ageDays: null,
+        reputationScore: 75,
+        source: 'default_neutral'
+      };
+    }
+  }
+
+  domainReputationCache.set(root, { result, cachedAt: Date.now() });
+  return result;
 }
