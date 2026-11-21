@@ -102,31 +102,74 @@ router.get('/', async (req, res) => {
     const scannedEmails = [];
 
     for (const email of rawEmails) {
+      const threat = await analyzeThreat(email);
+      const fingerprint = generateFingerprint(threat.senderDomain, email.subject);
+
       // Check if user already took action on this email or if we already have an explanation cached
       let actionTaken = null;
       let cachedExplanation = null;
       try {
+        // 1. Direct check by messageId for this user
         const existingScan = await getRow(
           `SELECT action_taken, risk_level, risk_score, explanation FROM scans WHERE user_email = ? AND message_id = ?`,
           [user.toLowerCase(), email.messageId]
         );
-        if (existingScan) {
-          actionTaken = existingScan.action_taken || null;
+        if (existingScan?.action_taken) {
+          actionTaken = existingScan.action_taken;
           cachedExplanation = existingScan.explanation || null;
+        }
+
+        // 2. If no direct action on this specific message, check if user previously vouched this email pattern (fingerprint)
+        if (!actionTaken) {
+          const priorVouch = await getRow(
+            `SELECT action_taken FROM scans 
+             WHERE user_email = ? AND fingerprint = ? AND action_taken IS NOT NULL 
+             ORDER BY id DESC LIMIT 1`,
+            [user.toLowerCase(), fingerprint]
+          );
+          if (priorVouch?.action_taken) {
+            actionTaken = priorVouch.action_taken;
+          }
+        }
+
+        // 3. Also check if user vouched earlier messages in the same thread
+        if (!actionTaken && email.threadId) {
+          const priorThreadVouch = await getRow(
+            `SELECT action_taken FROM scans 
+             WHERE user_email = ? AND thread_id = ? AND action_taken IS NOT NULL 
+             ORDER BY id DESC LIMIT 1`,
+            [user.toLowerCase(), email.threadId]
+          );
+          if (priorThreadVouch?.action_taken) {
+            actionTaken = priorThreadVouch.action_taken;
+          }
+        }
+
+        // 4. Also check by exact sender_address and subject
+        if (!actionTaken && email.senderAddress && email.subject) {
+          const priorExactVouch = await getRow(
+            `SELECT action_taken FROM scans 
+             WHERE user_email = ? AND sender_address = ? AND subject = ? AND action_taken IS NOT NULL 
+             ORDER BY id DESC LIMIT 1`,
+            [user.toLowerCase(), email.senderAddress, email.subject]
+          );
+          if (priorExactVouch?.action_taken) {
+            actionTaken = priorExactVouch.action_taken;
+          }
         }
       } catch (e) {
         // Ignore DB lookup error
       }
 
-      const threat = await analyzeThreat(email);
-
       // Check genuine community consensus from actual user actions
       const consensus = await getCommunityConsensus(threat.senderDomain, email.subject, user);
 
-      // 1. If current user explicitly marked this email as safe, honor their decision
+      // 1. If current user explicitly marked this email or its pattern as safe, honor their decision
       if (actionTaken === 'safe') {
         threat.riskLevel = 'safe';
         threat.riskScore = 0;
+        threat.reasons = ['Previously vouched as safe by you'];
+        cachedExplanation = null; // Do not show scam warning text for a vouched email
       } else if (actionTaken === 'flag') {
         threat.riskLevel = 'risk';
         threat.riskScore = Math.max(threat.riskScore, 85);
@@ -146,16 +189,20 @@ router.get('/', async (req, res) => {
         threat.reasons.unshift(`Reported as a scam by ${consensus.flaggedCount} Vouch community ${reportWord}`);
       }
 
-      // Reuse cached explanation if available to prevent redundant OpenAI latency and costs
-      const explanation = cachedExplanation || await generateFriendlyExplanation(email, threat.reasons, threat.riskLevel);
-      const communityCount = await recordAndGetCommunityCount(
-        threat.senderDomain,
-        email.subject,
-        threat.riskLevel,
-        user,
-        email.messageId
-      );
-      const fingerprint = generateFingerprint(threat.senderDomain, email.subject);
+      // Reuse cached explanation if available and not safe, otherwise generate only for caution/risk
+      const explanation = (threat.riskLevel === 'safe' || actionTaken === 'safe')
+        ? null
+        : (cachedExplanation || await generateFriendlyExplanation(email, threat.reasons, threat.riskLevel));
+
+      const communityCount = (threat.riskLevel === 'safe' || actionTaken === 'safe')
+        ? 0
+        : await recordAndGetCommunityCount(
+            threat.senderDomain,
+            email.subject,
+            threat.riskLevel,
+            user,
+            email.messageId
+          );
 
       // Save scan to database
       try {
@@ -171,6 +218,7 @@ router.get('/', async (req, res) => {
              reasons = excluded.reasons,
              explanation = excluded.explanation,
              community_count = excluded.community_count,
+             action_taken = COALESCE(excluded.action_taken, scans.action_taken),
              scanned_at = excluded.scanned_at`,
           [
             user.toLowerCase(),
@@ -262,11 +310,34 @@ router.post('/:id/action', async (req, res) => {
   const normalizedAction = isSafeAction ? 'safe' : 'flag';
   const updatedRiskLevel = isSafeAction ? 'safe' : 'risk';
 
+  // Update in-memory DEMO_EMAILS so demo mode immediately reflects vouch/flag
+  const demoMatch = DEMO_EMAILS.find(d => d.id === id || d.messageId === id);
+  if (demoMatch) {
+    demoMatch.actionTaken = normalizedAction;
+    if (isSafeAction) {
+      demoMatch.riskLevel = 'safe';
+      demoMatch.riskScore = 0;
+      demoMatch.reasons = ['Previously vouched as safe by you'];
+      demoMatch.explanation = null;
+    } else {
+      demoMatch.riskLevel = 'risk';
+      demoMatch.riskScore = Math.max(demoMatch.riskScore || 0, 85);
+      demoMatch.reasons = ['Flagged as scam by you'];
+    }
+  }
+
   if (userEmail) {
-    await runQuery(
-      `UPDATE scans SET action_taken = ?, risk_level = ? WHERE message_id = ? AND user_email = ?`,
-      [normalizedAction, updatedRiskLevel, id, userEmail.toLowerCase()]
-    );
+    if (isSafeAction) {
+      await runQuery(
+        `UPDATE scans SET action_taken = ?, risk_level = ?, risk_score = 0, reasons = ?, explanation = NULL WHERE message_id = ? AND user_email = ?`,
+        [normalizedAction, updatedRiskLevel, JSON.stringify(['Previously vouched as safe by you']), id, userEmail.toLowerCase()]
+      );
+    } else {
+      await runQuery(
+        `UPDATE scans SET action_taken = ?, risk_level = ? WHERE message_id = ? AND user_email = ?`,
+        [normalizedAction, updatedRiskLevel, id, userEmail.toLowerCase()]
+      );
+    }
 
     // If flagged as scam, also contribute to crowdsourced community threat detection
     if (!isSafeAction) {

@@ -56,7 +56,33 @@ export default function App() {
       const emailRes = await fetch(`/api/emails${userParam}`);
       const emailData = await emailRes.json();
 
-      setEmails(emailData.emails || []);
+      let fetchedEmails = emailData.emails || [];
+      try {
+        const storedActions = JSON.parse(localStorage.getItem('vouch_actions') || '{}');
+        fetchedEmails = fetchedEmails.map(e => {
+          const normKey = `${(e.senderAddress || e.sender || '').toLowerCase()}:${(e.subject || '').toLowerCase()}`;
+          const remembered = storedActions[e.id] || storedActions[e.messageId] || storedActions[normKey];
+          if (remembered === 'safe' || e.actionTaken === 'safe') {
+            return {
+              ...e,
+              actionTaken: 'safe',
+              riskLevel: 'safe',
+              riskScore: 0,
+              reasons: ['Previously vouched as safe by you'],
+              explanation: null
+            };
+          } else if (remembered === 'flag' || e.actionTaken === 'flag') {
+            return {
+              ...e,
+              actionTaken: 'flag',
+              riskLevel: 'risk'
+            };
+          }
+          return e;
+        });
+      } catch {}
+
+      setEmails(fetchedEmails);
       setIsDemo(emailData.isDemo);
 
       if (emailData.authExpired) {
@@ -74,7 +100,26 @@ export default function App() {
       fetch('/api/emails?mode=demo')
         .then(res => res.json())
         .then(data => {
-          setEmails(data.emails || []);
+          let demoList = data.emails || [];
+          try {
+            const storedActions = JSON.parse(localStorage.getItem('vouch_actions') || '{}');
+            demoList = demoList.map(e => {
+              const normKey = `${(e.senderAddress || e.sender || '').toLowerCase()}:${(e.subject || '').toLowerCase()}`;
+              const remembered = storedActions[e.id] || storedActions[e.messageId] || storedActions[normKey];
+              if (remembered === 'safe' || e.actionTaken === 'safe') {
+                return {
+                  ...e,
+                  actionTaken: 'safe',
+                  riskLevel: 'safe',
+                  riskScore: 0,
+                  reasons: ['Previously vouched as safe by you'],
+                  explanation: null
+                };
+              }
+              return e;
+            });
+          } catch {}
+          setEmails(demoList);
           setIsDemo(true);
         })
         .catch(() => {});
@@ -101,7 +146,18 @@ export default function App() {
 
     // Immediately update UI optimistically
     setEmails(prev =>
-      prev.map(e => (e.id === id ? { ...e, actionTaken: actionKey, riskLevel: isSafeAction ? 'safe' : 'risk' } : e))
+      prev.map(e =>
+        e.id === id
+          ? {
+              ...e,
+              actionTaken: actionKey,
+              riskLevel: isSafeAction ? 'safe' : 'risk',
+              riskScore: isSafeAction ? 0 : e.riskScore,
+              reasons: isSafeAction ? ['Previously vouched as safe by you'] : e.reasons,
+              explanation: isSafeAction ? null : e.explanation
+            }
+          : e
+      )
     );
     if (isSafeAction) {
       setOpenIds(prev => {
@@ -110,6 +166,18 @@ export default function App() {
         return next;
       });
     }
+
+    // Persist vouch action locally so any future refreshes or matching emails recall it immediately
+    try {
+      const storedActions = JSON.parse(localStorage.getItem('vouch_actions') || '{}');
+      storedActions[id] = actionKey;
+      const target = emails.find(e => e.id === id || e.messageId === id);
+      if (target) {
+        const normKey = `${(target.senderAddress || target.sender || '').toLowerCase()}:${(target.subject || '').toLowerCase()}`;
+        storedActions[normKey] = actionKey;
+      }
+      localStorage.setItem('vouch_actions', JSON.stringify(storedActions));
+    } catch {}
 
     try {
       const res = await fetch(`/api/emails/${id}/action`, {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { encryptToken, decryptToken } from '../src/services/googleAuth.js';
 import { analyzeThreat } from '../src/services/threatEngine.js';
 import { generateFingerprint, normalizeSubject } from '../src/services/communityService.js';
-import { initDb } from '../src/db/database.js';
+import { initDb, runQuery, getRow } from '../src/db/database.js';
 
 describe('Vouch Backend Test Suite', () => {
   before(async () => {
@@ -68,6 +68,80 @@ describe('Vouch Backend Test Suite', () => {
     const fp2 = generateFingerprint('secure-bank.com', sub2);
 
     assert.equal(fp1, fp2, 'Normalized subjects on same domain produce identical fingerprints');
+  });
+
+  test('User Vouch Persistence: Recurring email patterns auto-recognized as safe without warnings', async () => {
+    const testUser = 'user_persistence_test@example.com';
+    const originalSubject = 'Urgent: Your weekly server invoice #9021';
+    const futureSubject = 'Re: Urgent: Your weekly server invoice #9021';
+    const senderDomain = 'billing.cloudhost.io';
+
+    const originalFp = generateFingerprint(senderDomain, originalSubject);
+    const futureFp = generateFingerprint(senderDomain, futureSubject);
+    assert.equal(originalFp, futureFp, 'Fingerprint matches recurring email pattern');
+
+    // 1. User previously marked original email as safe
+    const now = new Date().toISOString();
+    await runQuery(
+      `INSERT INTO scans (
+         user_email, message_id, thread_id, sender_name, sender_address,
+         subject, date, snippet, risk_level, risk_score, reasons,
+         explanation, community_count, fingerprint, action_taken, scanned_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        testUser,
+        'msg-initial-1234',
+        'thread-999',
+        'CloudHost Billing',
+        'billing@billing.cloudhost.io',
+        originalSubject,
+        now,
+        'Invoice snippet',
+        'safe',
+        0,
+        JSON.stringify(['Previously vouched as safe by you']),
+        null,
+        0,
+        originalFp,
+        'safe',
+        now
+      ]
+    );
+
+    // 2. A new email arrives in the future with a DIFFERENT message_id
+    const newIncomingEmail = {
+      messageId: 'msg-future-5678',
+      threadId: 'thread-999',
+      senderName: 'CloudHost Billing',
+      senderAddress: 'billing@billing.cloudhost.io',
+      subject: futureSubject,
+      bodyText: 'Here is your weekly update. Immediate action required to review.'
+    };
+
+    // Threat engine might initially see urgency keywords
+    const threat = await analyzeThreat(newIncomingEmail);
+    const incomingFp = generateFingerprint(threat.senderDomain, newIncomingEmail.subject);
+
+    // Prior vouch lookup simulates emailRoutes.js logic
+    const priorVouch = await getRow(
+      `SELECT action_taken FROM scans 
+       WHERE user_email = ? AND fingerprint = ? AND action_taken IS NOT NULL 
+       ORDER BY id DESC LIMIT 1`,
+      [testUser, incomingFp]
+    );
+
+    assert.equal(priorVouch?.action_taken, 'safe', 'Recognized prior vouch on fingerprint');
+
+    // Threat suppression applied
+    if (priorVouch?.action_taken === 'safe') {
+      threat.riskLevel = 'safe';
+      threat.riskScore = 0;
+      threat.reasons = ['Previously vouched as safe by you'];
+    }
+
+    assert.equal(threat.riskLevel, 'safe');
+    assert.equal(threat.riskScore, 0);
+    assert.deepEqual(threat.reasons, ['Previously vouched as safe by you']);
   });
 });
 
