@@ -247,25 +247,24 @@ export default function App() {
       />
 
       {/* Eyebrow Subheader */}
-      <div className="flex items-baseline justify-between mx-[2px] mb-[12px] sm:mb-[14px]">
+      <div className="flex items-center justify-between mx-[2px] mb-[12px] sm:mb-[14px]">
         <span className="text-[11px] sm:text-[11.5px] uppercase tracking-[0.09em] text-ink-faint font-semibold">
           Inbox
         </span>
         {emails.length > 0 && !loading && (
-          <span className={`text-[11px] sm:text-[12px] font-medium transition-colors ${
-            reviewCount > 0 ? 'text-ink-soft' : 'text-safe'
-          }`}>
+          <div>
             {reviewCount > 0 ? (
-              <span>{reviewCount} {reviewCount === 1 ? 'email' : 'emails'} to review</span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-[11.5px] font-semibold bg-paper border border-line text-ink-soft shadow-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-gold"></span>
+                <span>{reviewCount} {reviewCount === 1 ? 'email' : 'emails'} to review</span>
+              </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                0 emails to review currently, all good
+              <span className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-[11.5px] font-semibold bg-safe-bg text-teal-deep border border-safe/30 shadow-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#7FA085]"></span>
+                <span>0 to review — All good</span>
               </span>
             )}
-          </span>
+          </div>
         )}
       </div>
 
