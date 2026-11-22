@@ -241,12 +241,9 @@ export default function App() {
       />
 
       {/* Eyebrow Subheader */}
-      <div className="flex items-baseline justify-between mx-[2px] mb-[12px] sm:mb-[14px]">
+      <div className="mx-[2px] mb-[12px] sm:mb-[14px]">
         <span className="text-[11px] sm:text-[11.5px] uppercase tracking-[0.09em] text-ink-faint font-semibold">
           Inbox
-        </span>
-        <span className="text-[11px] sm:text-[12px] text-ink-faint truncate ml-2">
-          Nothing to open, nothing to upload
         </span>
       </div>
 
