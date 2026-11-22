@@ -224,7 +224,7 @@ export default function App() {
   };
 
   return (
-    <div className="max-w-[760px] mx-auto py-9 px-5 pb-[90px]">
+    <div className="max-w-[760px] mx-auto py-4 sm:py-9 px-3.5 sm:px-5 pb-[70px] sm:pb-[90px]">
       {/* Top Header */}
       <Topbar />
 
@@ -241,11 +241,11 @@ export default function App() {
       />
 
       {/* Eyebrow Subheader */}
-      <div className="flex items-baseline justify-between mx-[2px] mb-[14px]">
-        <span className="text-[11.5px] uppercase tracking-[0.09em] text-ink-faint font-semibold">
+      <div className="flex items-baseline justify-between mx-[2px] mb-[12px] sm:mb-[14px]">
+        <span className="text-[11px] sm:text-[11.5px] uppercase tracking-[0.09em] text-ink-faint font-semibold">
           Inbox
         </span>
-        <span className="text-[12px] text-ink-faint">
+        <span className="text-[11px] sm:text-[12px] text-ink-faint truncate ml-2">
           Nothing to open, nothing to upload
         </span>
       </div>
@@ -253,11 +253,11 @@ export default function App() {
       {/* Inbox Rows List */}
       <div className="flex flex-col gap-[9px]">
         {loading && emails.length === 0 ? (
-          <div className="bg-paper-raised border border-line rounded-lg-custom p-8 text-center text-ink-soft text-[14px]">
+          <div className="bg-paper-raised border border-line rounded-lg-custom p-6 sm:p-8 text-center text-ink-soft text-[13px] sm:text-[14px]">
             Scanning inbox for recent emails and analyzing threat signatures...
           </div>
         ) : emails.length === 0 ? (
-          <div className="bg-paper-raised border border-line rounded-lg-custom p-8 text-center text-ink-faint text-[14px]">
+          <div className="bg-paper-raised border border-line rounded-lg-custom p-6 sm:p-8 text-center text-ink-faint text-[13px] sm:text-[14px]">
             No recent emails found in inbox.
           </div>
         ) : (
@@ -274,13 +274,13 @@ export default function App() {
       </div>
 
       {/* Privacy Disclosure & Philosophy Footer */}
-      <p className="text-center text-[12.5px] text-ink-faint mt-7 leading-[1.7] px-5">
+      <p className="text-center text-[11.5px] sm:text-[12.5px] text-ink-faint mt-6 sm:mt-7 leading-[1.6] sm:leading-[1.7] px-2 sm:px-5">
         <strong className="text-ink-soft font-semibold">Vouch</strong> scans quietly in the background — nothing to forward, convert, or upload. When one person flags a scam, everyone using Vouch is protected from it within seconds.
       </p>
 
       {/* Toast Feedback Notification */}
       {toast && (
-        <div className="fixed bottom-6 right-6 bg-ink text-paper-raised px-4 py-2.5 rounded-lg text-[13px] font-medium shadow-lg animate-fade-in z-50 flex items-center gap-2">
+        <div className="fixed bottom-4 sm:bottom-6 left-4 right-4 sm:left-auto sm:right-6 max-w-sm sm:max-w-md mx-auto sm:mx-0 bg-ink text-paper-raised px-4 py-2.5 rounded-lg text-[13px] font-medium shadow-lg animate-fade-in z-50 flex items-center justify-center sm:justify-start gap-2">
           <span>{toast.message}</span>
         </div>
       )}
